@@ -13,7 +13,7 @@ use super::{
 };
 
 #[derive(Debug)]
-enum ScriptType {
+pub enum ScriptType {
     Server,
     Client,
     Module,
@@ -23,10 +23,9 @@ enum ScriptType {
 pub fn snapshot_lua(
     context: &InstanceContext,
     vfs: &Vfs,
-    path: &Path,
-    override_script_type: Option<ScriptType>,
+    path: &Path
 ) -> anyhow::Result<Option<InstanceSnapshot>> {
-    let (default_script_type, instance_name) = get_script_type_and_name(path);
+    let file_name = path.file_name().unwrap().to_string_lossy();
 
     let run_context_enums = &rbx_reflection_database::get()
         .enums
@@ -104,7 +103,6 @@ pub fn snapshot_lua_init(
     context: &InstanceContext,
     vfs: &Vfs,
     init_path: &Path,
-    script_type: Option<ScriptType>,
 ) -> anyhow::Result<Option<InstanceSnapshot>> {
     let folder_path = init_path.parent().unwrap();
     let dir_snapshot = snapshot_dir_no_meta(context, vfs, folder_path)?.unwrap();
@@ -121,7 +119,7 @@ pub fn snapshot_lua_init(
         );
     }
 
-    let mut init_snapshot = snapshot_lua(context, vfs, init_path, script_type)?.unwrap();
+    let mut init_snapshot = snapshot_lua(context, vfs, init_path)?.unwrap();
 
     init_snapshot.name = dir_snapshot.name;
     init_snapshot.children = dir_snapshot.children;

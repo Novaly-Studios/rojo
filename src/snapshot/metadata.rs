@@ -116,6 +116,7 @@ impl InstanceContext {
     pub fn new() -> Self {
         Self {
             path_ignore_rules: Arc::new(Vec::new()),
+            transformer_rules: Arc::new(Vec::new()),
             emit_legacy_scripts: emit_legacy_scripts_default().unwrap(),
         }
     }

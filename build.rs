@@ -38,29 +38,6 @@ fn snapshot_from_fs_path(path: &Path) -> io::Result<VfsSnapshot> {
     }
 }
 
-fn update_plugin_version(plugin_root: &Path) -> Result<(), anyhow::Error> {
-    let plugin_wally = fs::read_to_string(&plugin_root.join("wally.toml"))?;
-    let mut plugin_wally: toml_edit::Document = plugin_wally.parse()?;
-
-    plugin_wally["package"]["version"] = toml_edit::value(env!("CARGO_PKG_VERSION"));
-
-    fs::write(&plugin_root.join("wally.toml"), plugin_wally.to_string())?;
-
-    Ok(())
-}
-
-fn update_readme_version() -> Result<(), anyhow::Error> {
-    let readme = fs::read_to_string("README.md")?;
-
-    let regex = regex::Regex::new(r#"rojo = "[^/]+/rojo@[^"]+""#)?;
-    let updated_readme = regex.replace_all(&readme, |_captures: &regex::Captures| {
-        format!(r#"rojo = "UpliftGames/rojo@{}""#, env!("CARGO_PKG_VERSION"))
-    });
-
-    fs::write("README.md", updated_readme.as_bytes())?;
-
-    Ok(())
-}
 
 fn main() -> Result<(), anyhow::Error> {
     let out_dir = env::var_os("OUT_DIR").unwrap();

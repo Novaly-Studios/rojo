@@ -30,19 +30,15 @@ pub fn snapshot_project(
         base_path: project.folder_location().to_path_buf(),
     });
 
+    let transformer_rules = project.transformer_rules.iter().map(|rule| TransformerRule {
+        pattern: rule.pattern.clone(),
+        transformer_name: rule.transformer_name.clone(),
+        base_path: project.folder_location().to_path_buf(),
+    });
+
     context.add_path_ignore_rules(path_ignore_rules);
-
-    let transformer_rules = project
-        .transformer_rules
-        .iter()
-        .map(|rule| TransformerRule {
-            pattern: rule.pattern.clone(),
-            transformer_name: rule.transformer_name.clone(),
-            base_path: project.folder_location().to_path_buf(),
-        });
-
     context.add_transformer_rules(transformer_rules);
-    context.add_path_ignore_rules(rules);
+
     context.set_emit_legacy_scripts(
         project
             .emit_legacy_scripts
