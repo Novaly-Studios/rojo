@@ -37,6 +37,12 @@ New Uplift Games-specific releases should:
 
 <div>&nbsp;</div>
 
+<div align="center">
+    <a href="https://github.com/rojo-rbx/rojo/actions"><img src="https://github.com/rojo-rbx/rojo/workflows/CI/badge.svg" alt="Actions status" /></a>
+    <a href="https://crates.io/crates/rojo"><img src="https://img.shields.io/crates/v/rojo.svg?label=latest%20release" alt="Latest server version" /></a>
+    <a href="https://rojo.space/docs"><img src="https://img.shields.io/badge/docs-website-brightgreen.svg" alt="Rojo Documentation" /></a>
+</div>
+
 <hr />
 
 **Rojo** is a tool designed to enable Roblox developers to use professional-grade software engineering tools.
@@ -85,7 +91,7 @@ Check out our [contribution guide](CONTRIBUTING.md) for detailed instructions fo
 
 Pull requests are welcome!
 
-Rojo supports Rust 1.58.1 and newer. The minimum supported version of Rust is based on the latest versions of the dependencies that Rojo has.
+Rojo supports Rust 1.70.0 and newer. The minimum supported version of Rust is based on the latest versions of the dependencies that Rojo has.
 
 ## License
 Rojo is available under the terms of the Mozilla Public License, Version 2.0. See [LICENSE.txt](LICENSE.txt) for details.

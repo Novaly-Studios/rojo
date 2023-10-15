@@ -7,6 +7,7 @@ use fs_err as fs;
 use fs_err::File;
 use maplit::hashmap;
 use memofs::VfsSnapshot;
+use semver::Version;
 
 fn snapshot_from_fs_path(path: &Path) -> io::Result<VfsSnapshot> {
     println!("cargo:rerun-if-changed={}", path.display());
@@ -67,8 +68,18 @@ fn main() -> Result<(), anyhow::Error> {
     let root_dir = env::var_os("CARGO_MANIFEST_DIR").unwrap();
     let plugin_root = PathBuf::from(root_dir).join("plugin");
 
-    update_plugin_version(&plugin_root)?;
-    update_readme_version()?;
+    let our_version = Version::parse(env::var_os("CARGO_PKG_VERSION").unwrap().to_str().unwrap())?;
+    let plugin_version =
+        Version::parse(fs::read_to_string(&plugin_root.join("Version.txt"))?.trim())?;
+
+    assert!(
+        our_version.major == plugin_version.major,
+        "plugin version does not match Cargo version"
+    );
+    assert!(
+        our_version.minor == plugin_version.minor,
+        "plugin version does not match Cargo version"
+    );
 
     let snapshot = VfsSnapshot::dir(hashmap! {
         "default.project.json" => snapshot_from_fs_path(&plugin_root.join("default.project.json"))?,
@@ -78,11 +89,11 @@ fn main() -> Result<(), anyhow::Error> {
         "rbx_dom_lua" => snapshot_from_fs_path(&plugin_root.join("rbx_dom_lua"))?,
         "src" => snapshot_from_fs_path(&plugin_root.join("src"))?,
         "Packages" => snapshot_from_fs_path(&plugin_root.join("Packages"))?,
-        "wally.toml" => snapshot_from_fs_path(&plugin_root.join("wally.toml"))?,
+        "Version.txt" => snapshot_from_fs_path(&plugin_root.join("Version.txt"))?,
     });
 
     let out_path = Path::new(&out_dir).join("plugin.bincode");
-    let out_file = File::create(&out_path)?;
+    let out_file = File::create(out_path)?;
 
     bincode::serialize_into(out_file, &snapshot)?;
 

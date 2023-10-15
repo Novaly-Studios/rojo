@@ -24,6 +24,7 @@ local Assets = {
 			Close = "rbxassetid://6012985953",
 			Back = "rbxassetid://6017213752",
 			Reset = "rbxassetid://10142422327",
+			Expand = "rbxassetid://12045401097",
 		},
 		Diff = {
 			Add = "rbxassetid://10434145835",
@@ -33,9 +34,11 @@ local Assets = {
 		Checkbox = {
 			Active = "rbxassetid://6016251644",
 			Inactive = "rbxassetid://6016251963",
+			Locked = "rbxassetid://14011257320",
 		},
 		Dropdown = {
 			Arrow = "rbxassetid://10131770538",
+			Locked = "rbxassetid://14011257320",
 		},
 		Spinner = {
 			Foreground = "rbxassetid://3222731032",
@@ -51,7 +54,7 @@ local Assets = {
 			[32] = "rbxassetid://3088713341",
 			[64] = "rbxassetid://4918677124",
 			[128] = "rbxassetid://2600845734",
-			[500] = "rbxassetid://2609138523"
+			[500] = "rbxassetid://2609138523",
 		},
 	},
 	Sounds = {

@@ -1,9 +1,8 @@
 ---
 source: src/snapshot_middleware/project.rs
 expression: instance_snapshot
-
 ---
-snapshot_id: ~
+snapshot_id: "00000000000000000000000000000000"
 metadata:
   ignore_unknown_instances: false
   instigating_source:
@@ -12,7 +11,8 @@ metadata:
     - /foo/other.txt
     - /foo/other.meta.json
     - /foo/default.project.json
-  context: {}
+  context:
+    emit_legacy_scripts: true
 name: path-project
 class_name: StringValue
 properties:

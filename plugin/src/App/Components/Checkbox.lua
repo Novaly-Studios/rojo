@@ -23,12 +23,10 @@ end
 
 function Checkbox:didUpdate(lastProps)
 	if lastProps.active ~= self.props.active then
-		self.motor:setGoal(
-			Flipper.Spring.new(self.props.active and 1 or 0, {
-				frequency = 6,
-				dampingRatio = 1.1,
-			})
-		)
+		self.motor:setGoal(Flipper.Spring.new(self.props.active and 1 or 0, {
+			frequency = 6,
+			dampingRatio = 1.1,
+		}))
 	end
 end
 
@@ -51,10 +49,16 @@ function Checkbox:render()
 			ZIndex = self.props.zIndex,
 			BackgroundTransparency = 1,
 
-			[Roact.Event.Activated] = self.props.onClick,
+			[Roact.Event.Activated] = function()
+				if self.props.locked then
+					return
+				end
+				self.props.onClick()
+			end,
 		}, {
 			StateTip = e(Tooltip.Trigger, {
-				text = if self.props.active then "Enabled" else "Disabled",
+				text = (if self.props.locked then "[LOCKED] " else "")
+					.. (if self.props.active then "Enabled" else "Disabled"),
 			}),
 
 			Active = e(SlicedImage, {
@@ -65,7 +69,7 @@ function Checkbox:render()
 				zIndex = 2,
 			}, {
 				Icon = e("ImageLabel", {
-					Image = Assets.Images.Checkbox.Active,
+					Image = if self.props.locked then Assets.Images.Checkbox.Locked else Assets.Images.Checkbox.Active,
 					ImageColor3 = theme.Active.IconColor,
 					ImageTransparency = activeTransparency,
 
@@ -84,7 +88,9 @@ function Checkbox:render()
 				size = UDim2.new(1, 0, 1, 0),
 			}, {
 				Icon = e("ImageLabel", {
-					Image = Assets.Images.Checkbox.Inactive,
+					Image = if self.props.locked
+						then Assets.Images.Checkbox.Locked
+						else Assets.Images.Checkbox.Inactive,
 					ImageColor3 = theme.Inactive.IconColor,
 					ImageTransparency = self.props.transparency,
 

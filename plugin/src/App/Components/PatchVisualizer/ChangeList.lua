@@ -4,9 +4,13 @@ local Packages = Rojo.Packages
 
 local Roact = require(Packages.Roact)
 
+local Assets = require(Plugin.Assets)
 local Theme = require(Plugin.App.Theme)
 local ScrollingFrame = require(Plugin.App.Components.ScrollingFrame)
+local BorderedContainer = require(Plugin.App.Components.BorderedContainer)
 local DisplayValue = require(script.Parent.DisplayValue)
+
+local EMPTY_TABLE = {}
 
 local e = Roact.createElement
 
@@ -25,8 +29,6 @@ function ChangeList:render()
 		local rowTransparency = props.transparency:map(function(t)
 			return 0.93 + (0.07 * t)
 		end)
-
-		local columnVisibility = props.columnVisibility
 
 		local rows = {}
 		local pad = {
@@ -48,7 +50,6 @@ function ChangeList:render()
 				VerticalAlignment = Enum.VerticalAlignment.Center,
 			}),
 			A = e("TextLabel", {
-				Visible = columnVisibility[1],
 				Text = tostring(changes[1][1]),
 				BackgroundTransparency = 1,
 				Font = Enum.Font.GothamBold,
@@ -61,7 +62,6 @@ function ChangeList:render()
 				LayoutOrder = 1,
 			}),
 			B = e("TextLabel", {
-				Visible = columnVisibility[2],
 				Text = tostring(changes[1][2]),
 				BackgroundTransparency = 1,
 				Font = Enum.Font.GothamBold,
@@ -74,7 +74,6 @@ function ChangeList:render()
 				LayoutOrder = 2,
 			}),
 			C = e("TextLabel", {
-				Visible = columnVisibility[3],
 				Text = tostring(changes[1][3]),
 				BackgroundTransparency = 1,
 				Font = Enum.Font.GothamBold,
@@ -93,6 +92,92 @@ function ChangeList:render()
 				continue -- Skip headers, already handled above
 			end
 
+			local metadata = values[4] or EMPTY_TABLE
+			local isWarning = metadata.isWarning
+
+			-- Special case for .Source updates
+			-- because we want to display a syntax highlighted diff for better UX
+			if self.props.showSourceDiff and tostring(values[1]) == "Source" then
+				rows[row] = e("Frame", {
+					Size = UDim2.new(1, 0, 0, 30),
+					BackgroundTransparency = row % 2 ~= 0 and rowTransparency or 1,
+					BackgroundColor3 = theme.Diff.Row,
+					BorderSizePixel = 0,
+					LayoutOrder = row,
+				}, {
+					Padding = e("UIPadding", pad),
+					Layout = e("UIListLayout", {
+						FillDirection = Enum.FillDirection.Horizontal,
+						SortOrder = Enum.SortOrder.LayoutOrder,
+						HorizontalAlignment = Enum.HorizontalAlignment.Left,
+						VerticalAlignment = Enum.VerticalAlignment.Center,
+					}),
+					A = e("TextLabel", {
+						Text = (if isWarning then "⚠ " else "") .. tostring(values[1]),
+						BackgroundTransparency = 1,
+						Font = Enum.Font.GothamMedium,
+						TextSize = 14,
+						TextColor3 = if isWarning then theme.Diff.Warning else theme.Settings.Setting.DescriptionColor,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						TextTransparency = props.transparency,
+						TextTruncate = Enum.TextTruncate.AtEnd,
+						Size = UDim2.new(0.3, 0, 1, 0),
+						LayoutOrder = 1,
+					}),
+					Button = e("TextButton", {
+						Text = "",
+						Size = UDim2.new(0.7, 0, 1, -4),
+						LayoutOrder = 2,
+						BackgroundTransparency = 1,
+						[Roact.Event.Activated] = function()
+							if props.showSourceDiff then
+								props.showSourceDiff(tostring(values[2]), tostring(values[3]))
+							end
+						end,
+					}, {
+						e(BorderedContainer, {
+							size = UDim2.new(1, 0, 1, 0),
+							transparency = self.props.transparency:map(function(t)
+								return 0.5 + (0.5 * t)
+							end),
+						}, {
+							Layout = e("UIListLayout", {
+								FillDirection = Enum.FillDirection.Horizontal,
+								SortOrder = Enum.SortOrder.LayoutOrder,
+								HorizontalAlignment = Enum.HorizontalAlignment.Center,
+								VerticalAlignment = Enum.VerticalAlignment.Center,
+								Padding = UDim.new(0, 5),
+							}),
+							Label = e("TextLabel", {
+								Text = "View Diff",
+								BackgroundTransparency = 1,
+								Font = Enum.Font.GothamMedium,
+								TextSize = 14,
+								TextColor3 = theme.Settings.Setting.DescriptionColor,
+								TextXAlignment = Enum.TextXAlignment.Left,
+								TextTransparency = props.transparency,
+								TextTruncate = Enum.TextTruncate.AtEnd,
+								Size = UDim2.new(0, 65, 1, 0),
+								LayoutOrder = 1,
+							}),
+							Icon = e("ImageLabel", {
+								Image = Assets.Images.Icons.Expand,
+								ImageColor3 = theme.Settings.Setting.DescriptionColor,
+								ImageTransparency = self.props.transparency,
+
+								Size = UDim2.new(0, 16, 0, 16),
+								Position = UDim2.new(0.5, 0, 0.5, 0),
+								AnchorPoint = Vector2.new(0.5, 0.5),
+
+								BackgroundTransparency = 1,
+								LayoutOrder = 2,
+							}),
+						}),
+					}),
+				})
+				continue
+			end
+
 			rows[row] = e("Frame", {
 				Size = UDim2.new(1, 0, 0, 30),
 				BackgroundTransparency = row % 2 ~= 0 and rowTransparency or 1,
@@ -108,12 +193,11 @@ function ChangeList:render()
 					VerticalAlignment = Enum.VerticalAlignment.Center,
 				}),
 				A = e("TextLabel", {
-					Visible = columnVisibility[1],
-					Text = tostring(values[1]),
+					Text = (if isWarning then "⚠ " else "") .. tostring(values[1]),
 					BackgroundTransparency = 1,
 					Font = Enum.Font.GothamMedium,
 					TextSize = 14,
-					TextColor3 = theme.Settings.Setting.DescriptionColor,
+					TextColor3 = if isWarning then theme.Diff.Warning else theme.Settings.Setting.DescriptionColor,
 					TextXAlignment = Enum.TextXAlignment.Left,
 					TextTransparency = props.transparency,
 					TextTruncate = Enum.TextTruncate.AtEnd,
@@ -123,7 +207,6 @@ function ChangeList:render()
 				B = e(
 					"Frame",
 					{
-						Visible = columnVisibility[2],
 						BackgroundTransparency = 1,
 						Size = UDim2.new(0.35, 0, 1, 0),
 						LayoutOrder = 2,
@@ -131,12 +214,12 @@ function ChangeList:render()
 					e(DisplayValue, {
 						value = values[2],
 						transparency = props.transparency,
+						textColor = if isWarning then theme.Diff.Warning else theme.Settings.Setting.DescriptionColor,
 					})
 				),
 				C = e(
 					"Frame",
 					{
-						Visible = columnVisibility[3],
 						BackgroundTransparency = 1,
 						Size = UDim2.new(0.35, 0, 1, 0),
 						LayoutOrder = 3,
@@ -144,6 +227,7 @@ function ChangeList:render()
 					e(DisplayValue, {
 						value = values[3],
 						transparency = props.transparency,
+						textColor = if isWarning then theme.Diff.Warning else theme.Settings.Setting.DescriptionColor,
 					})
 				),
 			})

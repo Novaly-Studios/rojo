@@ -12,6 +12,7 @@ local Theme = require(Plugin.App.Theme)
 local IconButton = require(Plugin.App.Components.IconButton)
 local ScrollingFrame = require(Plugin.App.Components.ScrollingFrame)
 local Tooltip = require(Plugin.App.Components.Tooltip)
+local TextInput = require(Plugin.App.Components.TextInput)
 local Setting = require(script.Setting)
 
 local e = Roact.createElement
@@ -25,6 +26,7 @@ local function invertTbl(tbl)
 end
 
 local invertedLevels = invertTbl(Log.Level)
+local confirmationBehaviors = { "Initial", "Always", "Large Changes", "Unlisted PlaceId" }
 
 local function Navbar(props)
 	return Theme.with(function(theme)
@@ -47,7 +49,7 @@ local function Navbar(props)
 				onClick = props.onBack,
 			}, {
 				Tip = e(Tooltip.Trigger, {
-					text = "Back"
+					text = "Back",
 				}),
 			}),
 
@@ -61,7 +63,7 @@ local function Navbar(props)
 				Size = UDim2.new(1, 0, 1, 0),
 
 				BackgroundTransparency = 1,
-			})
+			}),
 		})
 	end)
 end
@@ -87,20 +89,62 @@ function SettingsPage:render()
 				layoutOrder = 0,
 			}),
 
-			OpenScriptsExternally = e(Setting, {
-				id = "openScriptsExternally",
-				name = "Open Scripts Externally",
-				description = "Attempt to open scripts in an external editor",
-				transparency = self.props.transparency,
-				layoutOrder = 1,
-			}),
-
 			ShowNotifications = e(Setting, {
 				id = "showNotifications",
 				name = "Show Notifications",
 				description = "Popup notifications in viewport",
 				transparency = self.props.transparency,
+				layoutOrder = 1,
+			}),
+
+			SyncReminder = e(Setting, {
+				id = "syncReminder",
+				name = "Sync Reminder",
+				description = "Notify to sync when opening a place that has previously been synced",
+				transparency = self.props.transparency,
+				visible = Settings:getBinding("showNotifications"),
 				layoutOrder = 2,
+			}),
+
+			ConfirmationBehavior = e(Setting, {
+				id = "confirmationBehavior",
+				name = "Confirmation Behavior",
+				description = "When to prompt for confirmation before syncing",
+				transparency = self.props.transparency,
+				layoutOrder = 3,
+
+				options = confirmationBehaviors,
+			}),
+
+			LargeChangesConfirmationThreshold = e(Setting, {
+				id = "largeChangesConfirmationThreshold",
+				name = "Confirmation Threshold",
+				description = "How many modified instances to be considered a large change",
+				transparency = self.props.transparency,
+				layoutOrder = 4,
+				visible = Settings:getBinding("confirmationBehavior"):map(function(value)
+					return value == "Large Changes"
+				end),
+				input = e(TextInput, {
+					size = UDim2.new(0, 40, 0, 28),
+					text = Settings:getBinding("largeChangesConfirmationThreshold"):map(function(value)
+						return tostring(value)
+					end),
+					transparency = self.props.transparency,
+					enabled = true,
+					onEntered = function(text)
+						local number = tonumber(string.match(text, "%d+"))
+						if number then
+							Settings:set("largeChangesConfirmationThreshold", math.clamp(number, 1, 999))
+						else
+							-- Force text back to last valid value
+							Settings:set(
+								"largeChangesConfirmationThreshold",
+								Settings:get("largeChangesConfirmationThreshold")
+							)
+						end
+					end,
+				}),
 			}),
 
 			PlaySounds = e(Setting, {
@@ -108,15 +152,27 @@ function SettingsPage:render()
 				name = "Play Sounds",
 				description = "Toggle sound effects",
 				transparency = self.props.transparency,
-				layoutOrder = 3,
+				layoutOrder = 5,
+			}),
+
+			OpenScriptsExternally = e(Setting, {
+				id = "openScriptsExternally",
+				name = "Open Scripts Externally",
+				description = "Attempt to open scripts in an external editor",
+				locked = self.props.syncActive,
+				experimental = true,
+				transparency = self.props.transparency,
+				layoutOrder = 6,
 			}),
 
 			TwoWaySync = e(Setting, {
 				id = "twoWaySync",
 				name = "Two-Way Sync",
-				description = "EXPERIMENTAL! Editing files in Studio will sync them into the filesystem",
+				description = "Editing files in Studio will sync them into the filesystem",
+				locked = self.props.syncActive,
+				experimental = true,
 				transparency = self.props.transparency,
-				layoutOrder = 4,
+				layoutOrder = 7,
 			}),
 
 			LogLevel = e(Setting, {
@@ -124,7 +180,7 @@ function SettingsPage:render()
 				name = "Log Level",
 				description = "Plugin output verbosity level",
 				transparency = self.props.transparency,
-				layoutOrder = 5,
+				layoutOrder = 100,
 
 				options = invertedLevels,
 				showReset = Settings:getBinding("logLevel"):map(function(value)
@@ -140,7 +196,7 @@ function SettingsPage:render()
 				name = "Typechecking",
 				description = "Toggle typechecking on the API surface",
 				transparency = self.props.transparency,
-				layoutOrder = 6,
+				layoutOrder = 101,
 			}),
 
 			Layout = e("UIListLayout", {

@@ -2,7 +2,7 @@ use std::{borrow::Cow, collections::HashMap, path::Path};
 
 use anyhow::{bail, Context};
 use memofs::Vfs;
-use rbx_dom_weak::types::Attributes;
+use rbx_dom_weak::types::{Attributes, Ref};
 use rbx_reflection::ClassTag;
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use super::snapshot_from_vfs;
+use super::{emit_legacy_scripts_default, snapshot_from_vfs};
 
 pub fn snapshot_project(
     context: &InstanceContext,
@@ -42,6 +42,13 @@ pub fn snapshot_project(
         });
 
     context.add_transformer_rules(transformer_rules);
+    context.add_path_ignore_rules(rules);
+    context.set_emit_legacy_scripts(
+        project
+            .emit_legacy_scripts
+            .or_else(emit_legacy_scripts_default)
+            .unwrap(),
+    );
 
     match snapshot_project_node(&context, path, &project.name, &project.tree, vfs, None)? {
         Some(found_snapshot) => {
@@ -89,7 +96,7 @@ pub fn snapshot_project_node(
     let name = Cow::Owned(instance_name.to_owned());
     let mut properties = HashMap::new();
     let mut children = Vec::new();
-    let mut metadata = InstanceMetadata::default();
+    let mut metadata = InstanceMetadata::new().context(context);
 
     if let Some(path_node) = &node.path {
         let path = path_node.path();
@@ -283,7 +290,7 @@ pub fn snapshot_project_node(
     ));
 
     Ok(Some(InstanceSnapshot {
-        snapshot_id: None,
+        snapshot_id: Ref::none(),
         name,
         class_name,
         properties,
@@ -311,6 +318,11 @@ fn infer_class_name(name: &str, parent_class: Option<&str>) -> Option<Cow<'stati
         // StarterPlayer has two special members with their own classes.
 
         if name == "StarterPlayerScripts" || name == "StarterCharacterScripts" {
+            return Some(Cow::Owned(name.to_owned()));
+        }
+    } else if parent_class == "Workspace" {
+        // Workspace has a special Terrain class inside it
+        if name == "Terrain" {
             return Some(Cow::Owned(name.to_owned()));
         }
     }

@@ -2,23 +2,24 @@ local strict = require(script.Parent.strict)
 
 local isDevBuild = script.Parent.Parent:FindFirstChild("ROJO_DEV_BUILD") ~= nil
 
-local version = { 0, 0, 0, "-dev"}
-if script.Parent:FindFirstChild("wally.toml") then
-	local wally = require(script.Parent["wally.toml"])
-	local versionStr = { string.match(wally.package.version, "^(%d+)%.(%d+)%.(%d+)(.*)$") }
-	version = {
-		tonumber(versionStr[1]),
-		tonumber(versionStr[2]),
-		tonumber(versionStr[3]),
-		if versionStr[4] == "" then nil else versionStr[4],
-	}
+local Version = script.Parent.Parent.Version
+local major, minor, patch, metadata = Version.Value:match("^(%d+)%.(%d+)%.(%d+)(.*)$")
+
+local realVersion = { major, minor, patch, metadata }
+for i = 1, 3 do
+	local num = tonumber(realVersion[i])
+	if num then
+		realVersion[i] = num
+	else
+		error(("invalid version `%s` (field %d)"):format(realVersion[i], i))
+	end
 end
 
 return strict("Config", {
 	isDevBuild = isDevBuild,
 	codename = "Epiphany",
-	version = version,
-	expectedServerVersionString = "7.2 or newer",
+	version = realVersion,
+	expectedServerVersionString = ("%d.%d or newer"):format(realVersion[1], realVersion[2]),
 	protocolVersion = 4,
 	defaultHost = "localhost",
 	defaultPort = "34872",

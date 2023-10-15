@@ -1,9 +1,8 @@
 ---
 source: src/snapshot_middleware/dir.rs
-assertion_line: 148
 expression: instance_snapshot
 ---
-snapshot_id: ~
+snapshot_id: "00000000000000000000000000000000"
 metadata:
   ignore_unknown_instances: false
   instigating_source:
@@ -18,12 +17,13 @@ metadata:
     - /foo/init.client.lua
     - /foo/init.client.luau
     - /foo/init.csv
-  context: {}
+  context:
+    emit_legacy_scripts: true
 name: foo
 class_name: Folder
 properties: {}
 children:
-  - snapshot_id: ~
+  - snapshot_id: "00000000000000000000000000000000"
     metadata:
       ignore_unknown_instances: false
       instigating_source:
@@ -38,7 +38,8 @@ children:
         - /foo/Child/init.client.lua
         - /foo/Child/init.client.luau
         - /foo/Child/init.csv
-      context: {}
+      context:
+        emit_legacy_scripts: true
     name: Child
     class_name: Folder
     properties: {}

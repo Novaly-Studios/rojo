@@ -2,19 +2,20 @@
 source: src/snapshot_middleware/project.rs
 expression: instance_snapshot
 ---
-snapshot_id: ~
+snapshot_id: "00000000000000000000000000000000"
 metadata:
   ignore_unknown_instances: true
   instigating_source:
     Path: /foo.project.json
   relevant_paths:
     - /foo.project.json
-  context: {}
+  context:
+    emit_legacy_scripts: true
 name: children
 class_name: Folder
 properties: {}
 children:
-  - snapshot_id: ~
+  - snapshot_id: "00000000000000000000000000000000"
     metadata:
       ignore_unknown_instances: true
       instigating_source:
@@ -24,8 +25,10 @@ children:
           - $className: Model
           - Folder
       relevant_paths: []
-      context: {}
+      context:
+        emit_legacy_scripts: true
     name: Child
     class_name: Model
     properties: {}
     children: []
+

@@ -2,15 +2,17 @@
 source: src/snapshot_middleware/project.rs
 expression: instance_snapshot
 ---
-snapshot_id: ~
+snapshot_id: "00000000000000000000000000000000"
 metadata:
   ignore_unknown_instances: true
   instigating_source:
     Path: /foo/hello.project.json
   relevant_paths:
     - /foo/hello.project.json
-  context: {}
+  context:
+    emit_legacy_scripts: true
 name: direct-project
 class_name: Model
 properties: {}
 children: []
+

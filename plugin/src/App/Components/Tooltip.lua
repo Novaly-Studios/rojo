@@ -22,12 +22,16 @@ local TooltipContext = Roact.createContext({})
 
 local function Popup(props)
 	local textSize = TextService:GetTextSize(
-		props.Text, 16, Enum.Font.GothamMedium, Vector2.new(math.min(props.parentSize.X, 160), math.huge)
+		props.Text,
+		16,
+		Enum.Font.GothamMedium,
+		Vector2.new(math.min(props.parentSize.X, 160), math.huge)
 	) + TEXT_PADDING + (Vector2.one * 2)
 
 	local trigger = props.Trigger:getValue()
 
-	local spaceBelow = props.parentSize.Y - (trigger.AbsolutePosition.Y + trigger.AbsoluteSize.Y - Y_OVERLAP + TAIL_SIZE)
+	local spaceBelow = props.parentSize.Y
+		- (trigger.AbsolutePosition.Y + trigger.AbsoluteSize.Y - Y_OVERLAP + TAIL_SIZE)
 	local spaceAbove = trigger.AbsolutePosition.Y + Y_OVERLAP - TAIL_SIZE
 
 	-- If there's not enough space below, and there's more space above, then show the tooltip above the trigger
@@ -39,7 +43,10 @@ local function Popup(props)
 	if displayAbove then
 		Y = math.max(trigger.AbsolutePosition.Y - TAIL_SIZE - textSize.Y + Y_OVERLAP, 0)
 	else
-		Y = math.min(trigger.AbsolutePosition.Y + trigger.AbsoluteSize.Y + TAIL_SIZE - Y_OVERLAP, props.parentSize.Y - textSize.Y)
+		Y = math.min(
+			trigger.AbsolutePosition.Y + trigger.AbsoluteSize.Y + TAIL_SIZE - Y_OVERLAP,
+			props.parentSize.Y - textSize.Y
+		)
 	end
 
 	return Theme.with(function(theme)
@@ -64,17 +71,9 @@ local function Popup(props)
 
 			Tail = e("ImageLabel", {
 				ZIndex = 100,
-				Position =
-					if displayAbove then
-						UDim2.new(
-							0, math.clamp(props.Position.X - X, 6, textSize.X-6),
-							1, -1
-						)
-					else
-						UDim2.new(
-							0, math.clamp(props.Position.X - X, 6, textSize.X-6),
-							0, -TAIL_SIZE+1
-						),
+				Position = if displayAbove
+					then UDim2.new(0, math.clamp(props.Position.X - X, 6, textSize.X - 6), 1, -1)
+					else UDim2.new(0, math.clamp(props.Position.X - X, 6, textSize.X - 6), 0, -TAIL_SIZE + 1),
 				Size = UDim2.fromOffset(TAIL_SIZE, TAIL_SIZE),
 				AnchorPoint = Vector2.new(0.5, 0),
 				Rotation = if displayAbove then 180 else 0,
@@ -90,7 +89,7 @@ local function Popup(props)
 					ImageColor3 = theme.BorderedContainer.BorderColor,
 					ImageTransparency = props.transparency,
 				}),
-			})
+			}),
 		})
 	end)
 end
@@ -165,46 +164,97 @@ function Trigger:init()
 	self.id = HttpService:GenerateGUID(false)
 	self.ref = Roact.createRef()
 	self.mousePos = Vector2.zero
+	self.showingPopup = false
 
 	self.destroy = function()
 		self.props.context.removeTip(self.id)
+		self.showingPopup = false
 	end
 end
 
 function Trigger:willUnmount()
 	if self.showDelayThread then
-		task.cancel(self.showDelayThread)
+		pcall(task.cancel, self.showDelayThread)
 	end
 	if self.destroy then
 		self.destroy()
 	end
 end
 
+function Trigger:didUpdate(prevProps)
+	if prevProps.text ~= self.props.text then
+		-- Any existing popup is now invalid
+		self.props.context.removeTip(self.id)
+		self.showingPopup = false
+
+		-- Let the new text propagate
+		self:managePopup()
+	end
+end
+
+function Trigger:isHovering()
+	local rbx = self.ref.current
+	if rbx then
+		local pos = rbx.AbsolutePosition
+		local size = rbx.AbsoluteSize
+		local mousePos = self.mousePos
+
+		return mousePos.X >= pos.X
+			and mousePos.X <= pos.X + size.X
+			and mousePos.Y >= pos.Y
+			and mousePos.Y <= pos.Y + size.Y
+	end
+	return false
+end
+
+function Trigger:managePopup()
+	if self:isHovering() then
+		if self.showingPopup or self.showDelayThread then
+			-- Don't duplicate popups
+			return
+		end
+
+		self.showDelayThread = task.delay(DELAY, function()
+			self.props.context.addTip(self.id, {
+				Text = self.props.text,
+				Position = self.mousePos,
+				Trigger = self.ref,
+			})
+			self.showDelayThread = nil
+			self.showingPopup = true
+		end)
+	else
+		if self.showDelayThread then
+			pcall(task.cancel, self.showDelayThread)
+			self.showDelayThread = nil
+		end
+		self.props.context.removeTip(self.id)
+		self.showingPopup = false
+	end
+end
+
 function Trigger:render()
+	local function recalculate(rbx)
+		local widget = rbx:FindFirstAncestorOfClass("DockWidgetPluginGui")
+		if not widget then
+			return
+		end
+		self.mousePos = widget:GetRelativeMousePosition()
+
+		self:managePopup()
+	end
+
 	return e("Frame", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		ZIndex = self.props.zIndex or 100,
 		[Roact.Ref] = self.ref,
 
-		[Roact.Event.MouseMoved] = function(_rbx, x, y)
-			self.mousePos = Vector2.new(x, y)
-		end,
-		[Roact.Event.MouseEnter] = function()
-			self.showDelayThread = task.delay(DELAY, function()
-				self.props.context.addTip(self.id, {
-					Text = self.props.text,
-					Position = self.mousePos,
-					Trigger = self.ref,
-				})
-			end)
-		end,
-		[Roact.Event.MouseLeave] = function()
-			if self.showDelayThread then
-				task.cancel(self.showDelayThread)
-			end
-			self.props.context.removeTip(self.id)
-		end,
+		[Roact.Change.AbsolutePosition] = recalculate,
+		[Roact.Change.AbsoluteSize] = recalculate,
+		[Roact.Event.MouseMoved] = recalculate,
+		[Roact.Event.MouseLeave] = recalculate,
+		[Roact.Event.MouseEnter] = recalculate,
 	})
 end
 

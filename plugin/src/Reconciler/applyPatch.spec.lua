@@ -85,11 +85,11 @@ return function()
 			ClassName = "Model",
 			Name = "Child",
 			Parent = "ROOT",
-			Children = {"GRANDCHILD"},
+			Children = { "GRANDCHILD" },
 			Properties = {},
 		}
 
-		patch.added["GRANDCHILD"]  = {
+		patch.added["GRANDCHILD"] = {
 			Id = "GRANDCHILD",
 			ClassName = "Part",
 			Name = "Grandchild",

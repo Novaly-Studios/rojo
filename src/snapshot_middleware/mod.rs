@@ -39,7 +39,7 @@ use self::{
     util::PathExt,
 };
 
-pub use self::project::snapshot_project_node;
+pub use self::{project::snapshot_project_node, util::emit_legacy_scripts_default};
 
 /// Returns the path of the first relevant `init` file in the given directory.
 fn get_init_path(vfs: &Vfs, path: &Path) -> anyhow::Result<Option<PathBuf>> {
@@ -166,11 +166,41 @@ pub fn snapshot_from_vfs(
             .and_then(|name| name.to_str())
             .with_context(|| format!("Path had an invalid file name: {}", path.display()))?;
 
-        // Ignore files processed by the is_dir check above
-        match file_name {
-            "init.lua" | "init.luau" | "init.client.lua" | "init.client.luau"
-            | "init.server.lua" | "init.server.luau" | "init.csv" => return Ok(None),
-            _ => (),
+        let csv_name = path.file_name_trim_end(".csv");
+
+        if let Ok(name) = script_name {
+            match name {
+                // init scripts are handled elsewhere and should not turn into
+                // their own children.
+                "init" | "init.client" | "init.server" => return Ok(None),
+
+                _ => return snapshot_lua(context, vfs, path),
+            }
+        } else if path.file_name_ends_with(".project.json") {
+            return snapshot_project(context, vfs, path);
+        } else if path.file_name_ends_with(".model.json") {
+            return snapshot_json_model(context, vfs, path);
+        } else if path.file_name_ends_with(".meta.json") {
+            // .meta.json files do not turn into their own instances.
+            return Ok(None);
+        } else if path.file_name_ends_with(".json") {
+            return snapshot_json(context, vfs, path);
+        } else if path.file_name_ends_with(".toml") {
+            return snapshot_toml(context, vfs, path);
+        } else if let Ok(name) = csv_name {
+            match name {
+                // init csv are handled elsewhere and should not turn into
+                // their own children.
+                "init" => return Ok(None),
+
+                _ => return snapshot_csv(context, vfs, path),
+            }
+        } else if path.file_name_ends_with(".txt") {
+            return snapshot_txt(context, vfs, path);
+        } else if path.file_name_ends_with(".rbxmx") {
+            return snapshot_rbxmx(context, vfs, path);
+        } else if path.file_name_ends_with(".rbxm") {
+            return snapshot_rbxm(context, vfs, path);
         }
 
         match get_transformer(context, path) {

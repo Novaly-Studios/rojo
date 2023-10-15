@@ -7,13 +7,14 @@ use std::{
 use clap::Parser;
 use fs_err::File;
 use memofs::Vfs;
+use rayon::prelude::*;
 use rbx_dom_weak::types::Ref;
 use serde::Serialize;
 use tokio::runtime::Runtime;
 
 use crate::{
     serve_session::ServeSession,
-    snapshot::{InstanceWithMeta, RojoTree},
+    snapshot::{AppliedPatchSet, InstanceWithMeta, RojoTree},
 };
 
 use super::resolve_path;
@@ -23,15 +24,15 @@ const PATH_STRIP_FAILED_ERR: &str = "Failed to create relative paths for project
 /// Representation of a node in the generated sourcemap tree.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SourcemapNode {
-    name: String,
-    class_name: String,
+struct SourcemapNode<'a> {
+    name: &'a str,
+    class_name: &'a str,
 
     #[serde(skip_serializing_if = "Vec::is_empty")]
     file_paths: Vec<PathBuf>,
 
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    children: Vec<SourcemapNode>,
+    children: Vec<SourcemapNode<'a>>,
 }
 
 /// Generates a sourcemap file from the Rojo project.
@@ -75,6 +76,13 @@ impl SourcemapCommand {
             filter_non_scripts
         };
 
+        // Pre-build a rayon threadpool with a low number of threads to avoid
+        // dynamic creation overhead on systems with a high number of cpus.
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(num_cpus::get().min(6))
+            .build_global()
+            .unwrap();
+
         write_sourcemap(&session, self.output.as_deref(), filter)?;
 
         if self.watch {
@@ -82,10 +90,12 @@ impl SourcemapCommand {
 
             loop {
                 let receiver = session.message_queue().subscribe(cursor);
-                let (new_cursor, _patch_set) = rt.block_on(receiver).unwrap();
+                let (new_cursor, patch_set) = rt.block_on(receiver).unwrap();
                 cursor = new_cursor;
 
-                write_sourcemap(&session, self.output.as_deref(), filter)?;
+                if patch_set_affects_sourcemap(&session, &patch_set, filter) {
+                    write_sourcemap(&session, self.output.as_deref(), filter)?;
+                }
             }
         }
 
@@ -108,20 +118,56 @@ fn filter_non_scripts(instance: &InstanceWithMeta) -> bool {
     )
 }
 
-fn recurse_create_node(
-    tree: &RojoTree,
+fn patch_set_affects_sourcemap(
+    session: &ServeSession,
+    patch_set: &[AppliedPatchSet],
+    filter: fn(&InstanceWithMeta) -> bool,
+) -> bool {
+    let tree = session.tree();
+
+    // A sourcemap has probably changed when:
+    patch_set.par_iter().any(|set| {
+        // 1. An instance was removed, in which case it will no
+        // longer exist in the tree and we cant check the filter
+        !set.removed.is_empty()
+            // 2. A newly added instance passes the filter
+            || set.added.iter().any(|referent| {
+                let instance = tree
+                    .get_instance(*referent)
+                    .expect("instance did not exist when updating sourcemap");
+                filter(&instance)
+            })
+            // 3. An existing instance has its class name, name,
+            // or file paths changed, and passes the filter
+            || set.updated.iter().any(|updated| {
+                let changed = updated.changed_class_name.is_some()
+                    || updated.changed_name.is_some()
+                    || updated.changed_metadata.is_some();
+                if changed {
+                    let instance = tree
+                        .get_instance(updated.id)
+                        .expect("instance did not exist when updating sourcemap");
+                    filter(&instance)
+                } else {
+                    false
+                }
+            })
+    })
+}
+
+fn recurse_create_node<'a>(
+    tree: &'a RojoTree,
     referent: Ref,
     project_dir: &Path,
     filter: fn(&InstanceWithMeta) -> bool,
-) -> Option<SourcemapNode> {
+) -> Option<SourcemapNode<'a>> {
     let instance = tree.get_instance(referent).expect("instance did not exist");
 
-    let mut children = Vec::new();
-    for &child_id in instance.children() {
-        if let Some(child_node) = recurse_create_node(tree, child_id, project_dir, filter) {
-            children.push(child_node);
-        }
-    }
+    let children: Vec<_> = instance
+        .children()
+        .par_iter()
+        .filter_map(|&child_id| recurse_create_node(tree, child_id, project_dir, filter))
+        .collect();
 
     // If this object has no children and doesn't pass the filter, it doesn't
     // contain any information we're looking for.
@@ -140,8 +186,8 @@ fn recurse_create_node(
         .collect();
 
     Some(SourcemapNode {
-        name: instance.name().to_string(),
-        class_name: instance.class_name().to_string(),
+        name: instance.name(),
+        class_name: instance.class_name(),
         file_paths,
         children,
     })
@@ -157,7 +203,7 @@ fn write_sourcemap(
     let root_node = recurse_create_node(&tree, tree.get_root_id(), session.root_dir(), filter);
 
     if let Some(output_path) = output {
-        let mut file = BufWriter::new(File::create(&output_path)?);
+        let mut file = BufWriter::new(File::create(output_path)?);
         serde_json::to_writer(&mut file, &root_node)?;
         file.flush()?;
 

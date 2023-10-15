@@ -1,20 +1,22 @@
 ---
 source: src/snapshot_middleware/lua.rs
 expression: instance_snapshot
-
 ---
-snapshot_id: ~
+snapshot_id: "00000000000000000000000000000000"
 metadata:
-  ignore_unknown_instances: false
+  ignore_unknown_instances: true
   instigating_source:
-    Path: /foo.client.lua
+    Path: /foo.server.lua
   relevant_paths:
-    - /foo.client.lua
+    - /foo.server.lua
     - /foo.meta.json
-  context: {}
+  context:
+    emit_legacy_scripts: false
 name: foo
-class_name: LocalScript
+class_name: Script
 properties:
+  RunContext:
+    Enum: 1
   Source:
     String: Hello there!
 children: []
