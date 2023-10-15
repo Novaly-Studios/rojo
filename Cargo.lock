@@ -1820,7 +1820,7 @@ dependencies = [
 
 [[package]]
 name = "rojo"
-version = "7.4.0-rc2"
+version = "7.4.0-a.0"
 dependencies = [
  "anyhow",
  "backtrace",
