@@ -381,21 +381,21 @@ types = {
 
 	Ref = {
 		fromPod = function(_)
-			error("Ref cannot be decoded on its own")
+			warn("Ref cannot be decoded on its own")
 		end,
 
 		toPod = function(_)
-			error("Ref can not be encoded on its own")
+			warn("Ref can not be encoded on its own")
 		end,
 	},
 
 	Region3 = {
 		fromPod = function(_)
-			error("Region3 is not implemented")
+			warn("Region3 is not implemented")
 		end,
 
 		toPod = function(_)
-			error("Region3 is not implemented")
+			warn("Region3 is not implemented")
 		end,
 	},
 
@@ -414,20 +414,20 @@ types = {
 
 	SecurityCapabilities = {
 		fromPod = function(_pod)
-			error("SecurityCapabilities is not implemented")
+			warn("SecurityCapabilities is not implemented")
 		end,
 		toPod = function(_roblox)
-			error("SecurityCapabilities is not implemented")
+			warn("SecurityCapabilities is not implemented")
 		end,
 	},
 
 	SharedString = {
 		fromPod = function(_pod)
-			error("SharedString is not supported")
+			warn("SharedString is not supported")
 		end,
 
 		toPod = function(_roblox)
-			error("SharedString is not supported")
+			warn("SharedString is not supported")
 		end,
 	},
 
