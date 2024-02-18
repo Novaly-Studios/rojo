@@ -2,7 +2,7 @@
 	"Reifies" a virtual DOM, constructing a real DOM with the same shape.
 ]]
 
-local InsertService = game:GetService('InsertService')
+local InsertService = game:GetService("InsertService")
 
 local invariant = require(script.Parent.Parent.invariant)
 local PatchSet = require(script.Parent.Parent.PatchSet)
@@ -48,7 +48,7 @@ local function createInstance(instanceMap, className, properties)
 	if className == "MeshPart" then
 		local okMeshId, meshId = decodeValue(properties.MeshId, instanceMap)
 
-		-- It is okay to provide default properties here, because 
+		-- It is okay to provide default properties here, because
 		-- they will be overriden on the update cycle
 		return InsertService:CreateMeshPartAsync(meshId, Enum.CollisionFidelity.Default, Enum.RenderFidelity.Automatic)
 	else

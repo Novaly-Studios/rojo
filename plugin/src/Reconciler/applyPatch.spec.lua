@@ -159,7 +159,11 @@ return function()
 	end)
 
 	it("should recreate instances for MeshId updates", function()
-		local mesh = InsertService:CreateMeshPartAsync("rbxassetid://3229650568", Enum.CollisionFidelity.Default, Enum.RenderFidelity.Automatic)
+		local mesh = InsertService:CreateMeshPartAsync(
+			"rbxassetid://3229650568",
+			Enum.CollisionFidelity.Default,
+			Enum.RenderFidelity.Automatic
+		)
 
 		local instanceMap = InstanceMap.new()
 		instanceMap:insert("VALUE", mesh)
@@ -172,7 +176,7 @@ return function()
 					Content = "rbxassetid://4868357305",
 				},
 			},
-			requiresRecreate = true
+			requiresRecreate = true,
 		})
 
 		local unapplied = applyPatch(instanceMap, patch)

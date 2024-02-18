@@ -40,7 +40,7 @@ return function()
 	it("should recreate instance in the update when the instance's ClassName changes", function()
 		local part = Instance.new("Part")
 		local properties = {
-			ClassName = true
+			ClassName = true,
 		}
 
 		local update = encodePatchUpdate(part, "PART", properties)

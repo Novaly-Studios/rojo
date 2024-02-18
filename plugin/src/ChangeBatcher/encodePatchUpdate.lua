@@ -8,7 +8,7 @@ return function(instance, instanceId, properties)
 	local update = {
 		id = instanceId,
 		changedProperties = {},
-		requiresRecreate = false
+		requiresRecreate = false,
 	}
 
 	for propertyName in pairs(properties) do
@@ -19,7 +19,7 @@ return function(instance, instanceId, properties)
 		elseif propertyName == "ClassName" then
 			update.requiresRecreate, update.changedClassName = true, instance.ClassName
 		end
-		
+
 		local descriptor = RbxDom.findCanonicalPropertyDescriptor(instance.ClassName, propertyName)
 
 		if not descriptor then

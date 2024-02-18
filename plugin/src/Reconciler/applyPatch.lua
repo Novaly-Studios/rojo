@@ -94,7 +94,7 @@ local function applyPatch(instanceMap, patch)
 		local partiallyApplied = false
 
 		-- If the instance's className changed, or there is custom recreate logic,
-		-- we have a bumpy ride ahead while we recreate this instance and move all 
+		-- we have a bumpy ride ahead while we recreate this instance and move all
 		-- of its children into the new version atomically...ish.
 		if update.requiresRecreate then
 			-- If the instance's name also changed, we'll do it here, since this
