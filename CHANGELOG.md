@@ -1,6 +1,164 @@
 # Rojo Changelog
 
-## Unreleased Changes
+## 7.5.1 - April 25th, 2025
+* Fixed output spam related to `Instance.Capabilities` in the plugin
+
+## 7.5.0 - April 25th, 2025
+* Fixed an edge case that caused model pivots to not be built correctly in some cases ([#1027])
+* Add `blockedPlaceIds` project config field to allow blocking place ids from being live synced ([#1021])
+* Adds support for `.plugin.lua(u)` files - this applies the `Plugin` RunContext. ([#1008])
+* Added support for Roblox's `Content` type. This replaces the old `Content` type with `ContentId` to reflect Roblox's change.
+ 	If you were previously using the fully-qualified syntax for `Content` you will need to switch it to `ContentId`.
+* Added support for `Enum` attributes
+* Significantly improved performance of `.rbxm` parsing
+* Support for a `$schema` field in all special JSON files (`.project.json`, `.model.json`, and `.meta.json`) ([#974])
+* Projects may now manually link `Ref` properties together using `Attributes`. ([#843])
+ 	This has two parts: using `id` or `$id` in JSON files or a `Rojo_Target` attribute, an Instance
+    is given an ID. Then, that ID may be used elsewhere in the project to point to an Instance
+    using an attribute named `Rojo_Target_PROP_NAME`, where `PROP_NAME` is the name of a property.
+
+    As an example, here is a `model.json` for an ObjectValue that refers to itself:
+
+    ```json
+    {
+        "id": "arbitrary string",
+        "attributes": {
+            "Rojo_Target_Value": "arbitrary string"
+        }
+    }
+    ```
+
+    This is a very rough implementation and the usage will become more ergonomic
+    over time.
+
+* Updated Undo/Redo history to be more robust ([#915])
+* Added popout diff visualizer for table properties like Attributes and Tags ([#834])
+* Updated Theme to use Studio colors ([#838])
+* Improved patch visualizer UX ([#883])
+* Added update notifications for newer compatible versions in the Studio plugin. ([#832])
+* Added experimental setting for Auto Connect in playtests ([#840])
+* Improved settings UI ([#886])
+* `Open Scripts Externally` option can now be changed while syncing ([#911])
+* The sync reminder notification will now tell you what was last synced and when ([#987])
+* Fixed notification and tooltip text sometimes getting cut off ([#988])
+* Projects may now specify rules for syncing files as if they had a different file extension. ([#813])
+ 	This is specified via a new field on project files, `syncRules`:
+
+ 	```json
+ 	{
+ 	 	"syncRules": [
+ 	 	 	{
+ 	 	 	 	"pattern": "*.foo",
+ 	 	 	 	"use": "text",
+                "exclude": "*.exclude.foo",
+ 	 	 	},
+ 	 	 	{
+ 	 	 	 	"pattern": "*.bar.baz",
+ 	 	 	 	"use": "json",
+ 	 	 	 	"suffix": ".bar.baz",
+ 	 	 	},
+ 	 	],
+ 	 	"name": "SyncRulesAreCool",
+ 	 	"tree": {
+ 	 	 	"$path": "src"
+ 	 	}
+ 	}
+ 	```
+
+ 	The `pattern` field is a glob used to match the sync rule to files. If present, the `suffix` field allows you to specify parts of a file's name get cut off by Rojo to name the Instance, including the file extension. If it isn't specified, Rojo will only cut off the first part of the file extension, up to the first dot.
+
+    Additionally, the `exclude` field allows files to be excluded from the sync rule if they match a pattern specified by it. If it's not present, all files that match `pattern` will be modified using the sync rule.
+
+ 	The `use` field corresponds to one of the potential file type that Rojo will currently include in a project. Files that match the provided pattern will be treated as if they had the file extension for that file type.
+
+ 	| `use` value    | file extension  |
+ 	|:---------------|:----------------|
+ 	| `serverScript` | `.server.lua`   |
+ 	| `clientScript` | `.client.lua`   |
+ 	| `moduleScript` | `.lua`          |
+ 	| `json`         | `.json`         |
+ 	| `toml`         | `.toml`         |
+ 	| `csv`          | `.csv`          |
+ 	| `text`         | `.txt`          |
+ 	| `jsonModel`    | `.model.json`   |
+ 	| `rbxm`         | `.rbxm`         |
+ 	| `rbxmx`        | `.rbxmx`        |
+ 	| `project`      | `.project.json` |
+ 	| `ignore`       | None!           |
+
+	Additionally, there are `use` values for specific script types ([#909]):
+
+	| `use` value              | script type                            |
+	|:-------------------------|:---------------------------------------|
+	| `legacyServerScript`     | `Script` with `Enum.RunContext.Legacy` |
+	| `legacyClientScript`     | `LocalScript`                          |
+	| `runContextServerScript` | `Script` with `Enum.RunContext.Server` |
+	| `runContextClientScript` | `Script` with `Enum.RunContext.Client` |
+    | `pluginScript`           | `Script` with `Enum.RunContext.Plugin` |
+
+    **All** sync rules are reset between project files, so they must be specified in each one when nesting them. This is to ensure that nothing can break other projects by changing how files are synced!
+
+[#813]: https://github.com/rojo-rbx/rojo/pull/813
+[#832]: https://github.com/rojo-rbx/rojo/pull/832
+[#834]: https://github.com/rojo-rbx/rojo/pull/834
+[#838]: https://github.com/rojo-rbx/rojo/pull/838
+[#840]: https://github.com/rojo-rbx/rojo/pull/840
+[#843]: https://github.com/rojo-rbx/rojo/pull/843
+[#883]: https://github.com/rojo-rbx/rojo/pull/883
+[#886]: https://github.com/rojo-rbx/rojo/pull/886
+[#909]: https://github.com/rojo-rbx/rojo/pull/909
+[#911]: https://github.com/rojo-rbx/rojo/pull/911
+[#915]: https://github.com/rojo-rbx/rojo/pull/915
+[#974]: https://github.com/rojo-rbx/rojo/pull/974
+[#987]: https://github.com/rojo-rbx/rojo/pull/987
+[#988]: https://github.com/rojo-rbx/rojo/pull/988
+[#1008]: https://github.com/rojo-rbx/rojo/pull/1008
+[#1021]: https://github.com/rojo-rbx/rojo/pull/1021
+[#1027]: https://github.com/rojo-rbx/rojo/pull/1027
+
+## [7.4.4] - August 22nd, 2024
+* Fixed issue with reading attributes from `Lighting` in new place files
+* `Instance.Archivable` will now default to `true` when building a project into a binary (`rbxm`/`rbxl`) file rather than `false`.
+
+## [7.4.3] - August 6th, 2024
+* Fixed issue with building binary files introduced in 7.4.2
+* Fixed `value of type nil cannot be converted to number` warning spam in output. [#955]
+
+[#955]: https://github.com/rojo-rbx/rojo/pull/955
+
+## [7.4.2] - July 23, 2024
+* Added Never option to Confirmation ([#893])
+* Fixed removing trailing newlines ([#903])
+* Updated the internal property database, correcting an issue with `SurfaceAppearance.Color` that was reported [here][Surface_Appearance_Color_1] and [here][Surface_Appearance_Color_2] ([#948])
+
+[#893]: https://github.com/rojo-rbx/rojo/pull/893
+[#903]: https://github.com/rojo-rbx/rojo/pull/903
+[#948]: https://github.com/rojo-rbx/rojo/pull/948
+[Surface_Appearance_Color_1]: https://devforum.roblox.com/t/jailbreak-custom-character-turned-shiny-black-no-texture/3075563
+[Surface_Appearance_Color_2]: https://devforum.roblox.com/t/surfaceappearance-not-displaying-correctly/3075588
+
+## [7.4.1] - February 20, 2024
+* Made the `name` field optional on project files ([#870])
+
+	Files named `default.project.json` inherit the name of the folder they're in and all other projects
+    are named as expect (e.g. `foo.project.json` becomes an Instance named `foo`)
+
+    There is no change in behavior if `name` is set.
+* Fixed incorrect results when building model pivots ([#865])
+* Fixed incorrect results when serving model pivots ([#868])
+* Rojo now converts any line endings to LF, preventing spurious diffs when syncing Lua files on Windows ([#854])
+* Fixed Rojo plugin failing to connect when project contains certain unreadable properties ([#848])
+* Fixed various cases where patch visualizer would not display sync failures ([#845], [#844])
+* Fixed http error handling so Rojo can be used in Github Codespaces ([#847])
+
+[#848]: https://github.com/rojo-rbx/rojo/pull/848
+[#845]: https://github.com/rojo-rbx/rojo/pull/845
+[#844]: https://github.com/rojo-rbx/rojo/pull/844
+[#847]: https://github.com/rojo-rbx/rojo/pull/847
+[#854]: https://github.com/rojo-rbx/rojo/pull/854
+[#865]: https://github.com/rojo-rbx/rojo/pull/865
+[#868]: https://github.com/rojo-rbx/rojo/pull/868
+[#870]: https://github.com/rojo-rbx/rojo/pull/870
 
 ## [7.4.0-novaly.1] - February 18, 2024
 * Allows for syncing of Mesh Parts ([#534])

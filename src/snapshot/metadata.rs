@@ -4,11 +4,15 @@ use std::{
     sync::Arc,
 };
 
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    glob::Glob, path_serializer, project::ProjectNode,
-    snapshot_middleware::emit_legacy_scripts_default,
+    glob::Glob,
+    path_serializer,
+    project::ProjectNode,
+    snapshot_middleware::{emit_legacy_scripts_default, Middleware},
+    RojoRef,
 };
 
 /// Rojo-specific metadata that can be associated with an instance or a snapshot
@@ -55,6 +59,9 @@ pub struct InstanceMetadata {
     /// that instance's instigating source is snapshotted directly, the same
     /// context will be passed into it.
     pub context: InstanceContext,
+
+    /// Indicates the ID used for Ref properties pointing to this Instance.
+    pub specified_id: Option<RojoRef>,
 }
 
 impl InstanceMetadata {
@@ -64,6 +71,7 @@ impl InstanceMetadata {
             instigating_source: None,
             relevant_paths: Vec::new(),
             context: InstanceContext::default(),
+            specified_id: None,
         }
     }
 
@@ -94,6 +102,13 @@ impl InstanceMetadata {
             ..self
         }
     }
+
+    pub fn specified_id(self, id: Option<RojoRef>) -> Self {
+        Self {
+            specified_id: id,
+            ..self
+        }
+    }
 }
 
 impl Default for InstanceMetadata {
@@ -107,6 +122,8 @@ pub struct InstanceContext {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub path_ignore_rules: Arc<Vec<PathIgnoreRule>>,
     pub emit_legacy_scripts: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sync_rules: Vec<SyncRule>,
 }
 
 impl InstanceContext {
@@ -114,6 +131,7 @@ impl InstanceContext {
         Self {
             path_ignore_rules: Arc::new(Vec::new()),
             emit_legacy_scripts: emit_legacy_scripts_default().unwrap(),
+            sync_rules: Vec::new(),
         }
     }
 
@@ -144,8 +162,27 @@ impl InstanceContext {
         rules.extend(new_rules);
     }
 
+    /// Extend the list of syncing rules in the context with the given new rules.
+    pub fn add_sync_rules<I>(&mut self, new_rules: I)
+    where
+        I: IntoIterator<Item = SyncRule>,
+    {
+        self.sync_rules.extend(new_rules);
+    }
+
+    /// Clears all sync rules for this InstanceContext
+    pub fn clear_sync_rules(&mut self) {
+        self.sync_rules.clear();
+    }
+
     pub fn set_emit_legacy_scripts(&mut self, emit_legacy_scripts: bool) {
         self.emit_legacy_scripts = emit_legacy_scripts;
+    }
+
+    /// Returns the middleware specified by the first sync rule that
+    /// matches the provided path. This does not handle default syncing rules.
+    pub fn get_user_sync_rule(&self, path: &Path) -> Option<&SyncRule> {
+        self.sync_rules.iter().find(|&rule| rule.matches(path))
     }
 }
 
@@ -214,5 +251,66 @@ impl From<PathBuf> for InstigatingSource {
 impl From<&Path> for InstigatingSource {
     fn from(path: &Path) -> Self {
         InstigatingSource::Path(path.to_path_buf())
+    }
+}
+
+/// Represents an user-specified rule for transforming files
+/// into Instances using a given middleware.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct SyncRule {
+    /// A pattern used to determine if a file is included in this SyncRule
+    #[serde(rename = "pattern")]
+    pub include: Glob,
+    /// A pattern used to determine if a file is excluded from this SyncRule.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exclude: Option<Glob>,
+    /// The middleware specified by the user for this SyncRule
+    #[serde(rename = "use")]
+    pub middleware: Middleware,
+    /// A suffix to trim off of file names, including the file extension.
+    /// If not specified, the file extension is the only thing cut off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suffix: Option<String>,
+    /// The 'base' of the glob above, allowing it to be used
+    /// relative to a path instead of absolute.
+    #[serde(skip)]
+    pub base_path: PathBuf,
+}
+
+impl SyncRule {
+    /// Returns whether the given path matches this rule.
+    pub fn matches(&self, path: &Path) -> bool {
+        match path.strip_prefix(&self.base_path) {
+            Ok(suffix) => {
+                if let Some(pattern) = &self.exclude {
+                    if pattern.is_match(suffix) {
+                        return false;
+                    }
+                }
+                self.include.is_match(suffix)
+            }
+            Err(_) => false,
+        }
+    }
+
+    pub fn file_name_for_path<'a>(&self, path: &'a Path) -> anyhow::Result<&'a str> {
+        if let Some(suffix) = &self.suffix {
+            let file_name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .with_context(|| format!("file name of {} is invalid", path.display()))?;
+            if file_name.ends_with(suffix) {
+                let end = file_name.len().saturating_sub(suffix.len());
+                Ok(&file_name[..end])
+            } else {
+                Ok(file_name)
+            }
+        } else {
+            // If the user doesn't specify a suffix, we assume they just want
+            // the name of the file (the file_stem)
+            path.file_stem()
+                .and_then(|s| s.to_str())
+                .with_context(|| format!("file name of {} is invalid", path.display()))
+        }
     }
 }

@@ -149,14 +149,31 @@ local function diff(instanceMap, virtualInstances, rootId)
 
 		local changedProperties = {}
 		for propertyName, virtualValue in pairs(virtualInstance.Properties) do
-			local ok, existingValueOrErr = getProperty(instance, propertyName)
+			local getProperySuccess, existingValueOrErr = getProperty(instance, propertyName)
 
-			if ok then
+			if getProperySuccess then
 				local existingValue = existingValueOrErr
-				local ok, decodedValue = decodeValue(virtualValue, instanceMap)
+				local decodeSuccess, decodedValue
 
-				if ok then
-					if not trueEquals(existingValue, decodedValue) or requiresRecreate then
+				-- If `virtualValue` is a ref then instead of decoding it to an instance,
+				-- we change `existingValue` to be a ref. This is because `virtualValue`
+				-- may point to an Instance which doesn't exist yet and therefore
+				-- decoding it may throw an error.
+				if next(virtualValue) == "Ref" then
+					decodeSuccess, decodedValue = true, virtualValue
+
+					if existingValue and typeof(existingValue) == "Instance" then
+						local existingValueRef = instanceMap.fromInstances[existingValue]
+						if existingValueRef then
+							existingValue = { Ref = existingValueRef }
+						end
+					end
+				else
+					decodeSuccess, decodedValue = decodeValue(virtualValue, instanceMap)
+				end
+
+				if decodeSuccess then
+					if not trueEquals(existingValue, decodedValue) then
 						Log.debug(
 							"{}.{} changed from '{}' to '{}'",
 							instance:GetFullName(),
@@ -170,7 +187,6 @@ local function diff(instanceMap, virtualInstances, rootId)
 						end
 					end
 				else
-					local propertyType = next(virtualValue)
 					Log.warn(
 						"Failed to decode property {}.{}. Encoded property was: {:#?}",
 						virtualInstance.ClassName,
@@ -183,10 +199,8 @@ local function diff(instanceMap, virtualInstances, rootId)
 
 				if err.kind == Error.UnknownProperty then
 					Log.trace("Skipping unknown property {}.{}", err.details.className, err.details.propertyName)
-				elseif err.kind == Error.UnreadableProperty then
-					Log.trace("Skipping unreadable property {}.{}", err.details.className, err.details.propertyName)
 				else
-					return false, err
+					Log.trace("Skipping unreadable property {}.{}", err.details.className, err.details.propertyName)
 				end
 			end
 		end
@@ -226,9 +240,9 @@ local function diff(instanceMap, virtualInstances, rootId)
 					table.insert(patch.removed, childInstance)
 				end
 			else
-				local ok, err = diffInternal(childId)
+				local diffSuccess, err = diffInternal(childId)
 
-				if not ok then
+				if not diffSuccess then
 					return false, err
 				end
 			end
@@ -249,9 +263,9 @@ local function diff(instanceMap, virtualInstances, rootId)
 		return true
 	end
 
-	local ok, err = diffInternal(rootId)
+	local diffSuccess, err = diffInternal(rootId)
 
-	if not ok then
+	if not diffSuccess then
 		return false, err
 	end
 

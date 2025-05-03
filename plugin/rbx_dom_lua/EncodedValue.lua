@@ -188,6 +188,38 @@ types = {
 	},
 
 	Content = {
+		fromPod = function(pod): Content
+			if type(pod) == "string" then
+				if pod == "None" then
+					return Content.none
+				else
+					error(`unexpected Content value '{pod}'`)
+				end
+			else
+				local ty, value = next(pod)
+				if ty == "Uri" then
+					return Content.fromUri(value)
+				elseif ty == "Object" then
+					error("Object deserializing is not currently implemented")
+				else
+					error(`Unknown Content type '{ty}' (could not deserialize)`)
+				end
+			end
+		end,
+		toPod = function(roblox: Content)
+			if roblox.SourceType == Enum.ContentSourceType.None then
+				return "None"
+			elseif roblox.SourceType == Enum.ContentSourceType.Uri then
+				return { Uri = roblox.Uri }
+			elseif roblox.SourceType == Enum.ContentSourceType.Object then
+				error("Object serializing is not currently implemented")
+			else
+				error(`Unknown Content type '{roblox.SourceType} (could not serialize)`)
+			end
+		end,
+	},
+
+	ContentId = {
 		fromPod = identity,
 		toPod = identity,
 	},
@@ -202,6 +234,19 @@ types = {
 			else
 				return roblox.Value
 			end
+		end,
+	},
+
+	EnumItem = {
+		fromPod = function(pod)
+			return Enum[pod.type]:FromValue(pod.value)
+		end,
+
+		toPod = function(roblox)
+			return {
+				type = tostring(roblox.EnumType),
+				value = roblox.Value,
+			}
 		end,
 	},
 
@@ -300,7 +345,12 @@ types = {
 			local keypoints = {}
 
 			for index, keypoint in ipairs(pod.keypoints) do
-				keypoints[index] = NumberSequenceKeypoint.new(keypoint.time, keypoint.value, keypoint.envelope)
+				-- TODO: Add a test for NaN or Infinity values and envelopes
+				-- Right now it isn't possible because it'd fail the roundtrip.
+				-- It's more important that it works right now, though.
+				local value = keypoint.value or 0
+				local envelope = keypoint.envelope or 0
+				keypoints[index] = NumberSequenceKeypoint.new(keypoint.time, value, envelope)
 			end
 
 			return NumberSequence.new(keypoints)
@@ -493,8 +543,31 @@ types = {
 	},
 }
 
+types.OptionalCFrame = {
+	fromPod = function(pod)
+		if pod == nil then
+			return nil
+		else
+			return types.CFrame.fromPod(pod)
+		end
+	end,
+
+	toPod = function(roblox)
+		if roblox == nil then
+			return nil
+		else
+			return types.CFrame.toPod(roblox)
+		end
+	end,
+}
+
 function EncodedValue.decode(encodedValue)
 	local ty, value = next(encodedValue)
+
+	if ty == nil then
+		-- If the encoded pair is empty, assume it is an unoccupied optional value
+		return true, nil
+	end
 
 	local typeImpl = types[ty]
 	if typeImpl == nil then

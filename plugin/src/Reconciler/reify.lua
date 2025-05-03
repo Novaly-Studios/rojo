@@ -9,26 +9,6 @@ local PatchSet = require(script.Parent.Parent.PatchSet)
 local setProperty = require(script.Parent.setProperty)
 local decodeValue = require(script.Parent.decodeValue)
 
-local reifyInner, applyDeferredRefs
-
-local function reify(instanceMap, virtualInstances, rootId, parentInstance)
-	-- Create an empty patch that will be populated with any parts of this reify
-	-- that could not happen, like instances that couldn't be created and
-	-- properties that could not be assigned.
-	local unappliedPatch = PatchSet.newEmpty()
-
-	-- Contains a list of all of the ref properties that we'll need to assign
-	-- after all instances are created. We apply refs in a second pass, after
-	-- we create as many instances as we can, so that we ensure that referents
-	-- can be mapped to instances correctly.
-	local deferredRefs = {}
-
-	reifyInner(instanceMap, virtualInstances, rootId, parentInstance, unappliedPatch, deferredRefs)
-	applyDeferredRefs(instanceMap, deferredRefs, unappliedPatch)
-
-	return unappliedPatch
-end
-
 --[[
 	Add the given ID and all of its descendants in virtualInstances to the given
 	PatchSet, marked for addition.
@@ -48,6 +28,10 @@ local function createInstance(instanceMap, className, properties)
 	if className == "MeshPart" then
 		local okMeshId, meshId = decodeValue(properties.MeshId, instanceMap)
 
+		if (not okMeshId) then
+			return nil
+		end
+
 		-- It is okay to provide default properties here, because
 		-- they will be overriden on the update cycle
 		return InsertService:CreateMeshPartAsync(meshId, Enum.CollisionFidelity.Default, Enum.RenderFidelity.Automatic)
@@ -56,10 +40,21 @@ local function createInstance(instanceMap, className, properties)
 	end
 end
 
+function reifyInstance(deferredRefs, instanceMap, virtualInstances, rootId, parentInstance)
+	-- Create an empty patch that will be populated with any parts of this reify
+	-- that could not happen, like instances that couldn't be created and
+	-- properties that could not be assigned.
+	local unappliedPatch = PatchSet.newEmpty()
+
+	reifyInstanceInner(unappliedPatch, deferredRefs, instanceMap, virtualInstances, rootId, parentInstance)
+
+	return unappliedPatch
+end
+
 --[[
 	Inner function that defines the core routine.
 ]]
-function reifyInner(instanceMap, virtualInstances, id, parentInstance, unappliedPatch, deferredRefs)
+function reifyInstanceInner(unappliedPatch, deferredRefs, instanceMap, virtualInstances, id, parentInstance)
 	local virtualInstance = virtualInstances[id]
 
 	if virtualInstance == nil then
@@ -69,9 +64,9 @@ function reifyInner(instanceMap, virtualInstances, id, parentInstance, unapplied
 	-- Instance.new can fail if we're passing in something that can't be
 	-- created, like a service, something enabled with a feature flag, or
 	-- something that requires higher security than we have.
-	local ok, instance = pcall(createInstance, instanceMap, virtualInstance.ClassName, virtualInstance.Properties)
+	local createSuccess, instance = pcall(createInstance, instanceMap, virtualInstance.ClassName, virtualInstance.Properties)
 
-	if not ok then
+	if not createSuccess then
 		addAllToPatch(unappliedPatch, virtualInstances, id)
 		return
 	end
@@ -96,14 +91,14 @@ function reifyInner(instanceMap, virtualInstances, id, parentInstance, unapplied
 			continue
 		end
 
-		local ok, value = decodeValue(virtualValue, instanceMap)
-		if not ok then
+		local decodeSuccess, value = decodeValue(virtualValue, instanceMap)
+		if not decodeSuccess then
 			unappliedProperties[propertyName] = virtualValue
 			continue
 		end
 
-		local ok = setProperty(instance, propertyName, value)
-		if not ok then
+		local setPropertySuccess = setProperty(instance, propertyName, value)
+		if not setPropertySuccess then
 			unappliedProperties[propertyName] = virtualValue
 		end
 	end
@@ -118,7 +113,7 @@ function reifyInner(instanceMap, virtualInstances, id, parentInstance, unapplied
 	end
 
 	for _, childId in ipairs(virtualInstance.Children) do
-		reifyInner(instanceMap, virtualInstances, childId, instance, unappliedPatch, deferredRefs)
+		reifyInstanceInner(unappliedPatch, deferredRefs, instanceMap, virtualInstances, childId, instance)
 	end
 
 	instance.Parent = parentInstance
@@ -159,16 +154,20 @@ function applyDeferredRefs(instanceMap, deferredRefs, unappliedPatch)
 		end
 
 		local targetInstance = instanceMap.fromIds[refId]
+
 		if targetInstance == nil then
 			markFailed(entry.id, entry.propertyName, entry.virtualValue)
 			continue
 		end
 
-		local ok = setProperty(entry.instance, entry.propertyName, targetInstance)
-		if not ok then
+		local setPropertySuccess = setProperty(entry.instance, entry.propertyName, targetInstance)
+		if not setPropertySuccess then
 			markFailed(entry.id, entry.propertyName, entry.virtualValue)
 		end
 	end
 end
 
-return reify
+return {
+	reifyInstance = reifyInstance,
+	applyDeferredRefs = applyDeferredRefs,
+}

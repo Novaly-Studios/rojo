@@ -6,25 +6,41 @@ return function()
 	local InstanceMap = require(script.Parent.Parent.InstanceMap)
 	local PatchSet = require(script.Parent.Parent.PatchSet)
 
-	local dummy = Instance.new("Folder")
-	local function wasDestroyed(instance)
+	local container = Instance.new("Folder")
+
+	local tempContainer = Instance.new("Folder")
+	local function wasRemoved(instance)
 		-- If an instance was destroyed, its parent property is locked.
-		local ok = pcall(function()
+		-- If an instance was removed, its parent property is nil.
+		-- We need to ensure we only remove, so that ChangeHistoryService can still Undo.
+
+		local isParentUnlocked = pcall(function()
 			local oldParent = instance.Parent
-			instance.Parent = dummy
+			instance.Parent = tempContainer
 			instance.Parent = oldParent
 		end)
 
-		return not ok
+		return instance.Parent == nil and isParentUnlocked
 	end
+
+	beforeEach(function()
+		container:ClearAllChildren()
+	end)
+
+	afterAll(function()
+		container:Destroy()
+		tempContainer:Destroy()
+	end)
 
 	it("should return an empty patch if given an empty patch", function()
 		local patch = applyPatch(InstanceMap.new(), PatchSet.newEmpty())
 		assert(PatchSet.isEmpty(patch), "expected remaining patch to be empty")
 	end)
 
-	it("should destroy instances listed for remove", function()
+	it("should remove instances listed for remove", function()
 		local root = Instance.new("Folder")
+		root.Name = "ROOT"
+		root.Parent = container
 
 		local child = Instance.new("Folder")
 		child.Name = "Child"
@@ -40,14 +56,16 @@ return function()
 		local unapplied = applyPatch(instanceMap, patch)
 		assert(PatchSet.isEmpty(unapplied), "expected remaining patch to be empty")
 
-		assert(not wasDestroyed(root), "expected root to be left alone")
-		assert(wasDestroyed(child), "expected child to be destroyed")
+		assert(not wasRemoved(root), "expected root to be left alone")
+		assert(wasRemoved(child), "expected child to be removed")
 
 		instanceMap:stop()
 	end)
 
-	it("should destroy IDs listed for remove", function()
+	it("should remove IDs listed for remove", function()
 		local root = Instance.new("Folder")
+		root.Name = "ROOT"
+		root.Parent = container
 
 		local child = Instance.new("Folder")
 		child.Name = "Child"
@@ -64,8 +82,8 @@ return function()
 		assert(PatchSet.isEmpty(unapplied), "expected remaining patch to be empty")
 		expect(instanceMap:size()).to.equal(1)
 
-		assert(not wasDestroyed(root), "expected root to be left alone")
-		assert(wasDestroyed(child), "expected child to be destroyed")
+		assert(not wasRemoved(root), "expected root to be left alone")
+		assert(wasRemoved(child), "expected child to be removed")
 
 		instanceMap:stop()
 	end)
@@ -75,6 +93,8 @@ return function()
 		-- tests on reify, not here.
 
 		local root = Instance.new("Folder")
+		root.Name = "ROOT"
+		root.Parent = container
 
 		local instanceMap = InstanceMap.new()
 		instanceMap:insert("ROOT", root)
@@ -115,6 +135,8 @@ return function()
 
 	it("should return unapplied additions when instances cannot be created", function()
 		local root = Instance.new("Folder")
+		root.Name = "ROOT"
+		root.Parent = container
 
 		local instanceMap = InstanceMap.new()
 		instanceMap:insert("ROOT", root)
@@ -191,6 +213,7 @@ return function()
 	it("should recreate instances when requiresRecreate is set, preserving children", function()
 		local root = Instance.new("Folder")
 		root.Name = "Initial Root Name"
+		root.Parent = container
 
 		local child = Instance.new("Folder")
 		child.Name = "Child"

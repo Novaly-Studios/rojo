@@ -1,19 +1,19 @@
-local TextService = game:GetService("TextService")
-
 local Rojo = script:FindFirstAncestor("Rojo")
 local Plugin = Rojo.Plugin
 local Packages = Rojo.Packages
 
 local Roact = require(Packages.Roact)
 
+local Timer = require(Plugin.Timer)
+local PatchTree = require(Plugin.PatchTree)
 local Settings = require(Plugin.Settings)
 local Theme = require(Plugin.App.Theme)
 local TextButton = require(Plugin.App.Components.TextButton)
-local Header = require(Plugin.App.Components.Header)
 local StudioPluginGui = require(Plugin.App.Components.Studio.StudioPluginGui)
 local Tooltip = require(Plugin.App.Components.Tooltip)
 local PatchVisualizer = require(Plugin.App.Components.PatchVisualizer)
 local StringDiffVisualizer = require(Plugin.App.Components.StringDiffVisualizer)
+local TableDiffVisualizer = require(Plugin.App.Components.TableDiffVisualizer)
 
 local e = Roact.createElement
 
@@ -24,50 +24,75 @@ function ConfirmingPage:init()
 	self.containerSize, self.setContainerSize = Roact.createBinding(Vector2.new(0, 0))
 
 	self:setState({
-		showingSourceDiff = false,
-		oldSource = "",
-		newSource = "",
+		patchTree = nil,
+		showingStringDiff = false,
+		oldString = "",
+		newString = "",
+		showingTableDiff = false,
+		oldTable = {},
+		newTable = {},
 	})
+
+	if self.props.confirmData and self.props.confirmData.patch and self.props.confirmData.instanceMap then
+		self:buildPatchTree()
+	end
+end
+
+function ConfirmingPage:didUpdate(prevProps)
+	if prevProps.confirmData ~= self.props.confirmData then
+		self:buildPatchTree()
+	end
+end
+
+function ConfirmingPage:buildPatchTree()
+	Timer.start("ConfirmingPage:buildPatchTree")
+	self:setState({
+		patchTree = PatchTree.build(
+			self.props.confirmData.patch,
+			self.props.confirmData.instanceMap,
+			{ "Property", "Current", "Incoming" }
+		),
+	})
+	Timer.stop()
 end
 
 function ConfirmingPage:render()
 	return Theme.with(function(theme)
 		local pageContent = Roact.createFragment({
-			Header = e(Header, {
-				transparency = self.props.transparency,
-				layoutOrder = 1,
-			}),
-
 			Title = e("TextLabel", {
 				Text = string.format(
 					"Sync changes for project '%s':",
 					self.props.confirmData.serverInfo.projectName or "UNKNOWN"
 				),
-				LayoutOrder = 2,
-				Font = Enum.Font.Gotham,
+				FontFace = theme.Font.Thin,
 				LineHeight = 1.2,
-				TextSize = 14,
-				TextColor3 = theme.Settings.Setting.DescriptionColor,
+				TextSize = theme.TextSize.Body,
+				TextColor3 = theme.TextColor,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextTransparency = self.props.transparency,
-				Size = UDim2.new(1, 0, 0, 20),
+				Size = UDim2.new(1, 0, 0, theme.TextSize.Large + 2),
 				BackgroundTransparency = 1,
 			}),
 
 			PatchVisualizer = e(PatchVisualizer, {
-				size = UDim2.new(1, 0, 1, -150),
+				size = UDim2.new(1, 0, 1, -100),
 				transparency = self.props.transparency,
 				layoutOrder = 3,
 
-				changeListHeaders = { "Property", "Current", "Incoming" },
-				patch = self.props.confirmData.patch,
-				instanceMap = self.props.confirmData.instanceMap,
+				patchTree = self.state.patchTree,
 
-				showSourceDiff = function(oldSource: string, newSource: string)
+				showStringDiff = function(oldString: string, newString: string)
 					self:setState({
-						showingSourceDiff = true,
-						oldSource = oldSource,
-						newSource = newSource,
+						showingStringDiff = true,
+						oldString = oldString,
+						newString = newString,
+					})
+				end,
+				showTableDiff = function(oldTable: { [any]: any? }, newTable: { [any]: any? })
+					self:setState({
+						showingTableDiff = true,
+						oldTable = oldTable,
+						newTable = newTable,
 					})
 				end,
 			}),
@@ -123,6 +148,11 @@ function ConfirmingPage:render()
 				}),
 			}),
 
+			Padding = e("UIPadding", {
+				PaddingLeft = UDim.new(0, 8),
+				PaddingRight = UDim.new(0, 8),
+			}),
+
 			Layout = e("UIListLayout", {
 				HorizontalAlignment = Enum.HorizontalAlignment.Center,
 				VerticalAlignment = Enum.VerticalAlignment.Center,
@@ -131,15 +161,10 @@ function ConfirmingPage:render()
 				Padding = UDim.new(0, 10),
 			}),
 
-			Padding = e("UIPadding", {
-				PaddingLeft = UDim.new(0, 20),
-				PaddingRight = UDim.new(0, 20),
-			}),
-
-			SourceDiff = e(StudioPluginGui, {
-				id = "Rojo_ConfirmingSourceDiff",
-				title = "Source diff",
-				active = self.state.showingSourceDiff,
+			StringDiff = e(StudioPluginGui, {
+				id = "Rojo_ConfirmingStringDiff",
+				title = "String diff",
+				active = self.state.showingStringDiff,
 				isEphemeral = true,
 
 				initDockState = Enum.InitialDockState.Float,
@@ -151,7 +176,7 @@ function ConfirmingPage:render()
 
 				onClose = function()
 					self:setState({
-						showingSourceDiff = false,
+						showingStringDiff = false,
 					})
 				end,
 			}, {
@@ -167,8 +192,46 @@ function ConfirmingPage:render()
 							anchorPoint = Vector2.new(0, 0),
 							transparency = self.props.transparency,
 
-							oldText = self.state.oldSource,
-							newText = self.state.newSource,
+							oldString = self.state.oldString,
+							newString = self.state.newString,
+						}),
+					}),
+				}),
+			}),
+
+			TableDiff = e(StudioPluginGui, {
+				id = "Rojo_ConfirmingTableDiff",
+				title = "Table diff",
+				active = self.state.showingTableDiff,
+				isEphemeral = true,
+
+				initDockState = Enum.InitialDockState.Float,
+				overridePreviousState = true,
+				floatingSize = Vector2.new(500, 350),
+				minimumSize = Vector2.new(400, 250),
+
+				zIndexBehavior = Enum.ZIndexBehavior.Sibling,
+
+				onClose = function()
+					self:setState({
+						showingTableDiff = false,
+					})
+				end,
+			}, {
+				TooltipsProvider = e(Tooltip.Provider, nil, {
+					Tooltips = e(Tooltip.Container, nil),
+					Content = e("Frame", {
+						Size = UDim2.fromScale(1, 1),
+						BackgroundTransparency = 1,
+					}, {
+						e(TableDiffVisualizer, {
+							size = UDim2.new(1, -10, 1, -10),
+							position = UDim2.new(0, 5, 0, 5),
+							anchorPoint = Vector2.new(0, 0),
+							transparency = self.props.transparency,
+
+							oldTable = self.state.oldTable,
+							newTable = self.state.newTable,
 						}),
 					}),
 				}),

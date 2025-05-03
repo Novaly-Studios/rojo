@@ -23,6 +23,7 @@ local PatchTree = require(Plugin.PatchTree)
 local preloadAssets = require(Plugin.preloadAssets)
 local soundPlayer = require(Plugin.soundPlayer)
 local ignorePlaceIds = require(Plugin.ignorePlaceIds)
+local timeUtil = require(Plugin.timeUtil)
 local Theme = require(script.Theme)
 
 local Page = require(script.Page)
@@ -51,9 +52,9 @@ local App = Roact.Component:extend("App")
 function App:init()
 	preloadAssets()
 
-	local priorHost, priorPort = self:getPriorEndpoint()
-	self.host, self.setHost = Roact.createBinding(priorHost or "")
-	self.port, self.setPort = Roact.createBinding(priorPort or "")
+	local priorSyncInfo = self:getPriorSyncInfo()
+	self.host, self.setHost = Roact.createBinding(priorSyncInfo.host or "")
+	self.port, self.setPort = Roact.createBinding(priorSyncInfo.port or "")
 
 	self.confirmationBindable = Instance.new("BindableEvent")
 	self.confirmationEvent = self.confirmationBindable.Event
@@ -118,6 +119,13 @@ function App:init()
 		end)
 	end)
 
+	self.disconnectUpdatesCheckChanged = Settings:onChanged("checkForUpdates", function()
+		self:checkForUpdates()
+	end)
+	self.disconnectPrereleasesCheckChanged = Settings:onChanged("checkForPrereleases", function()
+		self:checkForUpdates()
+	end)
+
 	self:setState({
 		appStatus = AppStatus.NotConnected,
 		guiEnabled = false,
@@ -131,38 +139,73 @@ function App:init()
 		toolbarIcon = Assets.Images.PluginButton,
 	})
 
-	if
-		RunService:IsEdit()
-		and self.serveSession == nil
-		and Settings:get("syncReminder")
-		and self:getLastSyncTimestamp()
-		and (self:isSyncLockAvailable())
-	then
-		self:addNotification("You've previously synced this place. Would you like to reconnect?", 300, {
-			Connect = {
-				text = "Connect",
-				style = "Solid",
-				layoutOrder = 1,
-				onClick = function(notification)
-					notification:dismiss()
-					self:startSession()
-				end,
-			},
-			Dismiss = {
-				text = "Dismiss",
-				style = "Bordered",
-				layoutOrder = 2,
-				onClick = function(notification)
-					notification:dismiss()
-				end,
-			},
-		})
+	if RunService:IsEdit() then
+		self:checkForUpdates()
+
+		if
+			Settings:get("syncReminder")
+			and self.serveSession == nil
+			and self:getPriorSyncInfo().timestamp ~= nil
+			and (self:isSyncLockAvailable())
+		then
+			local syncInfo = self:getPriorSyncInfo()
+			local timeSinceSync = timeUtil.elapsedToText(os.time() - syncInfo.timestamp)
+			local syncDetail = if syncInfo.projectName
+				then `project '{syncInfo.projectName}'`
+				else `{syncInfo.host or Config.defaultHost}:{syncInfo.port or Config.defaultPort}`
+
+			self:addNotification(
+				`You synced {syncDetail} to this place {timeSinceSync}. Would you like to reconnect?`,
+				300,
+				{
+					Connect = {
+						text = "Connect",
+						style = "Solid",
+						layoutOrder = 1,
+						onClick = function(notification)
+							notification:dismiss()
+							self:startSession()
+						end,
+					},
+					Dismiss = {
+						text = "Dismiss",
+						style = "Bordered",
+						layoutOrder = 2,
+						onClick = function(notification)
+							notification:dismiss()
+						end,
+					},
+				}
+			)
+		end
 	end
+
+	if self:isAutoConnectPlaytestServerAvailable() then
+		self:useRunningConnectionInfo()
+		self:startSession()
+	end
+	self.autoConnectPlaytestServerListener = Settings:onChanged("autoConnectPlaytestServer", function(enabled)
+		if enabled then
+			if self:isAutoConnectPlaytestServerWriteable() and self.serveSession ~= nil then
+				-- Write the existing session
+				local baseUrl = self.serveSession.__apiContext.__baseUrl
+				self:setRunningConnectionInfo(baseUrl)
+			end
+		else
+			self:clearRunningConnectionInfo()
+		end
+	end)
 end
 
 function App:willUnmount()
 	self.waypointConnection:Disconnect()
 	self.confirmationBindable:Destroy()
+
+	self.disconnectUpdatesCheckChanged()
+	self.disconnectPrereleasesCheckChanged()
+
+	self.autoConnectPlaytestServerListener()
+	self:clearRunningConnectionInfo()
 end
 
 function App:addNotification(
@@ -207,54 +250,66 @@ function App:closeNotification(id: number)
 	})
 end
 
-function App:getPriorEndpoint()
-	local priorEndpoints = Settings:get("priorEndpoints")
-	if not priorEndpoints then
+function App:checkForUpdates()
+	if not Settings:get("checkForUpdates") then
 		return
+	end
+
+	local isLocalInstall = string.find(debug.traceback(), "\n[^\n]-user_.-$") ~= nil
+	local latestCompatibleVersion = Version.retrieveLatestCompatible({
+		version = Config.version,
+		includePrereleases = isLocalInstall and Settings:get("checkForPrereleases"),
+	})
+	if not latestCompatibleVersion then
+		return
+	end
+
+	self:addNotification(
+		string.format(
+			"A newer compatible version of Rojo, %s, was published %s! Go to the Rojo releases page to learn more.",
+			Version.display(latestCompatibleVersion.version),
+			timeUtil.elapsedToText(DateTime.now().UnixTimestamp - latestCompatibleVersion.publishedUnixTimestamp)
+		),
+		500,
+		{
+			Dismiss = {
+				text = "Dismiss",
+				style = "Bordered",
+				layoutOrder = 2,
+				onClick = function(notification)
+					notification:dismiss()
+				end,
+			},
+		}
+	)
+end
+
+function App:getPriorSyncInfo(): { host: string?, port: string?, projectName: string?, timestamp: number? }
+	local priorSyncInfos = Settings:get("priorEndpoints")
+	if not priorSyncInfos then
+		return {}
 	end
 
 	local id = tostring(game.PlaceId)
 	if ignorePlaceIds[id] then
-		return
+		return {}
 	end
 
-	local place = priorEndpoints[id]
-	if not place then
-		return
-	end
-
-	return place.host, place.port
+	return priorSyncInfos[id] or {}
 end
 
-function App:getLastSyncTimestamp()
-	local priorEndpoints = Settings:get("priorEndpoints")
-	if not priorEndpoints then
-		return
+function App:setPriorSyncInfo(host: string, port: string, projectName: string)
+	local priorSyncInfos = Settings:get("priorEndpoints")
+	if not priorSyncInfos then
+		priorSyncInfos = {}
 	end
 
-	local id = tostring(game.PlaceId)
-	if ignorePlaceIds[id] then
-		return
-	end
-
-	local place = priorEndpoints[id]
-	if not place then
-		return
-	end
-
-	return place.timestamp
-end
-
-function App:setPriorEndpoint(host: string, port: string)
-	local priorEndpoints = Settings:get("priorEndpoints")
-	if not priorEndpoints then
-		priorEndpoints = {}
-	end
+	local now = os.time()
 
 	-- Clear any stale saves to avoid disc bloat
-	for placeId, endpoint in priorEndpoints do
-		if os.time() - endpoint.timestamp > 12_960_000 then
-			priorEndpoints[placeId] = nil
+	for placeId, syncInfo in priorSyncInfos do
+		if now - (syncInfo.timestamp or now) > 12_960_000 then
+			priorSyncInfos[placeId] = nil
 			Log.trace("Cleared stale saved endpoint for {}", placeId)
 		end
 	end
@@ -264,24 +319,22 @@ function App:setPriorEndpoint(host: string, port: string)
 		return
 	end
 
-	priorEndpoints[id] = {
+	priorSyncInfos[id] = {
 		host = if host ~= Config.defaultHost then host else nil,
 		port = if port ~= Config.defaultPort then port else nil,
-		timestamp = os.time(),
+		projectName = projectName,
+		timestamp = now,
 	}
 	Log.trace("Saved last used endpoint for {}", game.PlaceId)
 
-	Settings:set("priorEndpoints", priorEndpoints)
+	Settings:set("priorEndpoints", priorSyncInfos)
 end
 
 function App:getHostAndPort()
 	local host = self.host:getValue()
 	local port = self.port:getValue()
 
-	local host = if #host > 0 then host else Config.defaultHost
-	local port = if #port > 0 then port else Config.defaultPort
-
-	return host, port
+	return if #host > 0 then host else Config.defaultHost, if #port > 0 then port else Config.defaultPort
 end
 
 function App:isSyncLockAvailable()
@@ -349,6 +402,49 @@ function App:releaseSyncLock()
 	Log.trace("Could not relase sync lock because it is owned by {}", lock.Value)
 end
 
+function App:isAutoConnectPlaytestServerAvailable()
+	return RunService:IsRunMode()
+		and RunService:IsServer()
+		and Settings:get("autoConnectPlaytestServer")
+		and workspace:GetAttribute("__Rojo_ConnectionUrl")
+end
+
+function App:isAutoConnectPlaytestServerWriteable()
+	return RunService:IsEdit() and Settings:get("autoConnectPlaytestServer")
+end
+
+function App:setRunningConnectionInfo(baseUrl: string)
+	if not self:isAutoConnectPlaytestServerWriteable() then
+		return
+	end
+
+	Log.trace("Setting connection info for play solo auto-connect")
+	workspace:SetAttribute("__Rojo_ConnectionUrl", baseUrl)
+end
+
+function App:clearRunningConnectionInfo()
+	if not RunService:IsEdit() then
+		-- Only write connection info from edit mode
+		return
+	end
+
+	Log.trace("Clearing connection info for play solo auto-connect")
+	workspace:SetAttribute("__Rojo_ConnectionUrl", nil)
+end
+
+function App:useRunningConnectionInfo()
+	local connectionInfo = workspace:GetAttribute("__Rojo_ConnectionUrl")
+	if not connectionInfo then
+		return
+	end
+
+	Log.trace("Using connection info for play solo auto-connect")
+	local host, port = string.match(connectionInfo, "^(.+):(.-)$")
+
+	self.setHost(host)
+	self.setPort(port)
+end
+
 function App:startSession()
 	local claimedLock, priorOwner = self:claimSyncLock()
 	if not claimedLock then
@@ -367,11 +463,6 @@ function App:startSession()
 
 	local host, port = self:getHostAndPort()
 
-	local sessionOptions = {
-		openScriptsExternally = Settings:get("openScriptsExternally"),
-		twoWaySync = Settings:get("twoWaySync"),
-	}
-
 	local baseUrl = if string.find(host, "^https?://")
 		then string.format("%s:%s", host, port)
 		else string.format("http://%s:%s", host, port)
@@ -379,8 +470,7 @@ function App:startSession()
 
 	local serveSession = ServeSession.new({
 		apiContext = apiContext,
-		openScriptsExternally = sessionOptions.openScriptsExternally,
-		twoWaySync = sessionOptions.twoWaySync,
+		twoWaySync = Settings:get("twoWaySync"),
 	})
 
 	self.cleanupPrecommit = serveSession.__reconciler:hookPrecommit(function(patch, instanceMap)
@@ -399,7 +489,7 @@ function App:startSession()
 	end)
 
 	serveSession:hookPostcommit(function(patch, _instanceMap, unapplied)
-		local now = os.time()
+		local now = DateTime.now().UnixTimestamp
 		local old = self.state.patchData
 
 		if PatchSet.isEmpty(patch) then
@@ -432,8 +522,6 @@ function App:startSession()
 
 	serveSession:onStatusChanged(function(status, details)
 		if status == ServeSession.Status.Connecting then
-			self:setPriorEndpoint(host, port)
-
 			self:setState({
 				appStatus = AppStatus.Connecting,
 				toolbarIcon = Assets.Images.PluginButton,
@@ -441,6 +529,8 @@ function App:startSession()
 			self:addNotification("Connecting to session...")
 		elseif status == ServeSession.Status.Connected then
 			self.knownProjects[details] = true
+			self:setPriorSyncInfo(host, port, details)
+			self:setRunningConnectionInfo(baseUrl)
 
 			local address = ("%s:%s"):format(host, port)
 			self:setState({
@@ -453,6 +543,7 @@ function App:startSession()
 		elseif status == ServeSession.Status.Disconnected then
 			self.serveSession = nil
 			self:releaseSyncLock()
+			self:clearRunningConnectionInfo()
 			self:setState({
 				patchData = {
 					patch = PatchSet.newEmpty(),
@@ -488,6 +579,12 @@ function App:startSession()
 			return "Accept"
 		end
 
+		-- Play solo auto-connect does not require confirmation
+		if self:isAutoConnectPlaytestServerAvailable() then
+			Log.trace("Accepting patch without confirmation because play solo auto-connect is enabled")
+			return "Accept"
+		end
+
 		local confirmationBehavior = Settings:get("confirmationBehavior")
 		if confirmationBehavior == "Initial" then
 			-- Only confirm if we haven't synced this project yet this session
@@ -516,6 +613,9 @@ function App:startSession()
 					return "Accept"
 				end
 			end
+		elseif confirmationBehavior == "Never" then
+			Log.trace("Accepting patch without confirmation because behavior is set to Never")
+			return "Accept"
 		end
 
 		-- The datamodel name gets overwritten by Studio, making confirmation of it intrusive
@@ -603,7 +703,7 @@ function App:render()
 		value = self.props.plugin,
 	}, {
 		e(Theme.StudioProvider, nil, {
-			e(Tooltip.Provider, nil, {
+			tooltip = e(Tooltip.Provider, nil, {
 				gui = e(StudioPluginGui, {
 					id = pluginName,
 					title = pluginName,

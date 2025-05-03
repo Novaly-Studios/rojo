@@ -1,5 +1,3 @@
-local TextService = game:GetService("TextService")
-
 local Rojo = script:FindFirstAncestor("Rojo")
 local Plugin = Rojo.Plugin
 local Packages = Rojo.Packages
@@ -9,7 +7,9 @@ local Log = require(Packages.Log)
 local Highlighter = require(Packages.Highlighter)
 local StringDiff = require(script:FindFirstChild("StringDiff"))
 
+local Timer = require(Plugin.Timer)
 local Theme = require(Plugin.App.Theme)
+local getTextBoundsAsync = require(Plugin.App.getTextBoundsAsync)
 
 local CodeLabel = require(Plugin.App.Components.CodeLabel)
 local BorderedContainer = require(Plugin.App.Components.BorderedContainer)
@@ -31,7 +31,6 @@ function StringDiffVisualizer:init()
 		end)
 	end)
 
-	self:calculateContentSize()
 	self:updateScriptBackground()
 
 	self:setState({
@@ -52,8 +51,7 @@ function StringDiffVisualizer:updateScriptBackground()
 end
 
 function StringDiffVisualizer:didUpdate(previousProps)
-	if previousProps.oldText ~= self.props.oldText or previousProps.newText ~= self.props.newText then
-		self:calculateContentSize()
+	if previousProps.oldString ~= self.props.oldString or previousProps.newString ~= self.props.newString then
 		local add, remove = self:calculateDiffLines()
 		self:setState({
 			add = add,
@@ -62,29 +60,30 @@ function StringDiffVisualizer:didUpdate(previousProps)
 	end
 end
 
-function StringDiffVisualizer:calculateContentSize()
-	local oldText, newText = self.props.oldText, self.props.newText
+function StringDiffVisualizer:calculateContentSize(theme)
+	local oldString, newString = self.props.oldString, self.props.newString
 
-	local oldTextBounds = TextService:GetTextSize(oldText, 16, Enum.Font.RobotoMono, Vector2.new(99999, 99999))
-	local newTextBounds = TextService:GetTextSize(newText, 16, Enum.Font.RobotoMono, Vector2.new(99999, 99999))
+	local oldStringBounds = getTextBoundsAsync(oldString, theme.Font.Code, theme.TextSize.Code, math.huge)
+	local newStringBounds = getTextBoundsAsync(newString, theme.Font.Code, theme.TextSize.Code, math.huge)
 
 	self.setContentSize(
-		Vector2.new(math.max(oldTextBounds.X, newTextBounds.X), math.max(oldTextBounds.Y, newTextBounds.Y))
+		Vector2.new(math.max(oldStringBounds.X, newStringBounds.X), math.max(oldStringBounds.Y, newStringBounds.Y))
 	)
 end
 
 function StringDiffVisualizer:calculateDiffLines()
-	local oldText, newText = self.props.oldText, self.props.newText
+	Timer.start("StringDiffVisualizer:calculateDiffLines")
+	local oldString, newString = self.props.oldString, self.props.newString
 
 	-- Diff the two texts
 	local startClock = os.clock()
-	local diffs = StringDiff.findDiffs(oldText, newText)
+	local diffs = StringDiff.findDiffs(oldString, newString)
 	local stopClock = os.clock()
 
 	Log.trace(
 		"Diffing {} byte and {} byte strings took {} microseconds and found {} diff sections",
-		#oldText,
-		#newText,
+		#oldString,
+		#newString,
 		math.round((stopClock - startClock) * 1000 * 1000),
 		#diffs
 	)
@@ -133,13 +132,16 @@ function StringDiffVisualizer:calculateDiffLines()
 		end
 	end
 
+	Timer.stop()
 	return add, remove
 end
 
 function StringDiffVisualizer:render()
-	local oldText, newText = self.props.oldText, self.props.newText
+	local oldString, newString = self.props.oldString, self.props.newString
 
 	return Theme.with(function(theme)
+		self:calculateContentSize(theme)
+
 		return e(BorderedContainer, {
 			size = self.props.size,
 			position = self.props.position,
@@ -175,7 +177,7 @@ function StringDiffVisualizer:render()
 				Source = e(CodeLabel, {
 					size = UDim2.new(1, 0, 1, 0),
 					position = UDim2.new(0, 0, 0, 0),
-					text = oldText,
+					text = oldString,
 					lineBackground = theme.Diff.Remove,
 					markedLines = self.state.remove,
 				}),
@@ -190,7 +192,7 @@ function StringDiffVisualizer:render()
 				Source = e(CodeLabel, {
 					size = UDim2.new(1, 0, 1, 0),
 					position = UDim2.new(0, 0, 0, 0),
-					text = newText,
+					text = newString,
 					lineBackground = theme.Diff.Add,
 					markedLines = self.state.add,
 				}),

@@ -30,10 +30,10 @@ local function DisplayValue(props)
 					}),
 				}),
 				Label = e("TextLabel", {
-					Text = string.format("%d,%d,%d", props.value.R * 255, props.value.G * 255, props.value.B * 255),
+					Text = string.format("%d, %d, %d", props.value.R * 255, props.value.G * 255, props.value.B * 255),
 					BackgroundTransparency = 1,
-					Font = Enum.Font.GothamMedium,
-					TextSize = 14,
+					FontFace = theme.Font.Main,
+					TextSize = theme.TextSize.Body,
 					TextColor3 = props.textColor,
 					TextXAlignment = Enum.TextXAlignment.Left,
 					TextTransparency = props.transparency,
@@ -57,7 +57,7 @@ local function DisplayValue(props)
 				-- We don't need to support mixed tables, so checking the first key is enough
 				-- to determine if it's a simple array
 				local out, i = table.create(#props.value), 0
-				for k, v in props.value do
+				for _, v in props.value do
 					i += 1
 
 					-- Wrap strings in quotes
@@ -90,8 +90,8 @@ local function DisplayValue(props)
 			return e("TextLabel", {
 				Text = textRepresentation,
 				BackgroundTransparency = 1,
-				Font = Enum.Font.GothamMedium,
-				TextSize = 14,
+				FontFace = theme.Font.Main,
+				TextSize = theme.TextSize.Body,
 				TextColor3 = props.textColor,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextTransparency = props.transparency,
@@ -104,11 +104,16 @@ local function DisplayValue(props)
 		-- Or special text handling tostring for some?
 		-- Will add as needed, let's see what cases arise.
 
+		local textRepresentation = string.gsub(tostring(props.value), "%s", " ")
+		if t == "string" then
+			textRepresentation = '"' .. textRepresentation .. '"'
+		end
+
 		return e("TextLabel", {
-			Text = string.gsub(tostring(props.value), "%s", " "),
+			Text = textRepresentation,
 			BackgroundTransparency = 1,
-			Font = Enum.Font.GothamMedium,
-			TextSize = 14,
+			FontFace = theme.Font.Main,
+			TextSize = theme.TextSize.Body,
 			TextColor3 = props.textColor,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTransparency = props.transparency,

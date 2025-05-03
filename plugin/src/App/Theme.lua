@@ -1,7 +1,6 @@
 --[[
-	Theming system taking advantage of Roact's new context API.
-	Doesn't use colors provided by Studio and instead just branches on theme
-	name. This isn't exactly best practice.
+	Theming system provided through Roact's context.
+	Uses Studio colors when possible.
 ]]
 
 -- Studio does not exist outside Roblox Studio, so we'll lazily initialize it
@@ -15,237 +14,18 @@ local function getStudio()
 	return _Studio
 end
 
+local ContentProvider = game:GetService("ContentProvider")
+
 local Rojo = script:FindFirstAncestor("Rojo")
 local Packages = Rojo.Packages
 
 local Roact = require(Packages.Roact)
-local Log = require(Packages.Log)
 
 local strict = require(script.Parent.Parent.strict)
 
 local BRAND_COLOR = Color3.fromHex("E13835")
 
-local lightTheme = strict("LightTheme", {
-	BackgroundColor = Color3.fromHex("FFFFFF"),
-	Button = {
-		Solid = {
-			ActionFillColor = Color3.fromHex("FFFFFF"),
-			ActionFillTransparency = 0.8,
-			Enabled = {
-				TextColor = Color3.fromHex("FFFFFF"),
-				BackgroundColor = BRAND_COLOR,
-			},
-			Disabled = {
-				TextColor = Color3.fromHex("FFFFFF"),
-				BackgroundColor = BRAND_COLOR,
-			},
-		},
-		Bordered = {
-			ActionFillColor = Color3.fromHex("000000"),
-			ActionFillTransparency = 0.9,
-			Enabled = {
-				TextColor = Color3.fromHex("393939"),
-				BorderColor = Color3.fromHex("ACACAC"),
-			},
-			Disabled = {
-				TextColor = Color3.fromHex("393939"),
-				BorderColor = Color3.fromHex("ACACAC"),
-			},
-		},
-	},
-	Checkbox = {
-		Active = {
-			IconColor = Color3.fromHex("FFFFFF"),
-			BackgroundColor = BRAND_COLOR,
-		},
-		Inactive = {
-			IconColor = Color3.fromHex("EEEEEE"),
-			BorderColor = Color3.fromHex("AFAFAF"),
-		},
-	},
-	Dropdown = {
-		TextColor = Color3.fromHex("000000"),
-		BorderColor = Color3.fromHex("AFAFAF"),
-		BackgroundColor = Color3.fromHex("EEEEEE"),
-		Open = {
-			IconColor = BRAND_COLOR,
-		},
-		Closed = {
-			IconColor = Color3.fromHex("EEEEEE"),
-		},
-	},
-	TextInput = {
-		Enabled = {
-			TextColor = Color3.fromHex("000000"),
-			PlaceholderColor = Color3.fromHex("8C8C8C"),
-			BorderColor = Color3.fromHex("ACACAC"),
-		},
-		Disabled = {
-			TextColor = Color3.fromHex("393939"),
-			PlaceholderColor = Color3.fromHex("8C8C8C"),
-			BorderColor = Color3.fromHex("AFAFAF"),
-		},
-		ActionFillColor = Color3.fromHex("000000"),
-		ActionFillTransparency = 0.9,
-	},
-	AddressEntry = {
-		TextColor = Color3.fromHex("000000"),
-		PlaceholderColor = Color3.fromHex("8C8C8C"),
-	},
-	BorderedContainer = {
-		BorderColor = Color3.fromHex("CBCBCB"),
-		BackgroundColor = Color3.fromHex("EEEEEE"),
-	},
-	Spinner = {
-		ForegroundColor = BRAND_COLOR,
-		BackgroundColor = Color3.fromHex("EEEEEE"),
-	},
-	Diff = {
-		Add = Color3.fromHex("baffbd"),
-		Remove = Color3.fromHex("ffbdba"),
-		Edit = Color3.fromHex("bacdff"),
-		Row = Color3.fromHex("000000"),
-		Warning = Color3.fromHex("FF8E3C"),
-	},
-	ConnectionDetails = {
-		ProjectNameColor = Color3.fromHex("000000"),
-		AddressColor = Color3.fromHex("000000"),
-		DisconnectColor = BRAND_COLOR,
-	},
-	Settings = {
-		DividerColor = Color3.fromHex("CBCBCB"),
-		Navbar = {
-			BackButtonColor = Color3.fromHex("000000"),
-			TextColor = Color3.fromHex("000000"),
-		},
-		Setting = {
-			NameColor = Color3.fromHex("000000"),
-			DescriptionColor = Color3.fromHex("5F5F5F"),
-		},
-	},
-	Header = {
-		LogoColor = BRAND_COLOR,
-		VersionColor = Color3.fromHex("727272"),
-	},
-	Notification = {
-		InfoColor = Color3.fromHex("000000"),
-		CloseColor = BRAND_COLOR,
-	},
-	ErrorColor = Color3.fromHex("000000"),
-	ScrollBarColor = Color3.fromHex("000000"),
-})
-
-local darkTheme = strict("DarkTheme", {
-	BackgroundColor = Color3.fromHex("2E2E2E"),
-	Button = {
-		Solid = {
-			ActionFillColor = Color3.fromHex("FFFFFF"),
-			ActionFillTransparency = 0.8,
-			Enabled = {
-				TextColor = Color3.fromHex("FFFFFF"),
-				BackgroundColor = BRAND_COLOR,
-			},
-			Disabled = {
-				TextColor = Color3.fromHex("FFFFFF"),
-				BackgroundColor = BRAND_COLOR,
-			},
-		},
-		Bordered = {
-			ActionFillColor = Color3.fromHex("FFFFFF"),
-			ActionFillTransparency = 0.9,
-			Enabled = {
-				TextColor = Color3.fromHex("DBDBDB"),
-				BorderColor = Color3.fromHex("535353"),
-			},
-			Disabled = {
-				TextColor = Color3.fromHex("DBDBDB"),
-				BorderColor = Color3.fromHex("535353"),
-			},
-		},
-	},
-	Checkbox = {
-		Active = {
-			IconColor = Color3.fromHex("FFFFFF"),
-			BackgroundColor = BRAND_COLOR,
-		},
-		Inactive = {
-			IconColor = Color3.fromHex("484848"),
-			BorderColor = Color3.fromHex("5A5A5A"),
-		},
-	},
-	Dropdown = {
-		TextColor = Color3.fromHex("FFFFFF"),
-		BorderColor = Color3.fromHex("5A5A5A"),
-		BackgroundColor = Color3.fromHex("2B2B2B"),
-		Open = {
-			IconColor = BRAND_COLOR,
-		},
-		Closed = {
-			IconColor = Color3.fromHex("484848"),
-		},
-	},
-	TextInput = {
-		Enabled = {
-			TextColor = Color3.fromHex("FFFFFF"),
-			PlaceholderColor = Color3.fromHex("8B8B8B"),
-			BorderColor = Color3.fromHex("535353"),
-		},
-		Disabled = {
-			TextColor = Color3.fromHex("484848"),
-			PlaceholderColor = Color3.fromHex("8B8B8B"),
-			BorderColor = Color3.fromHex("5A5A5A"),
-		},
-		ActionFillColor = Color3.fromHex("FFFFFF"),
-		ActionFillTransparency = 0.9,
-	},
-	AddressEntry = {
-		TextColor = Color3.fromHex("FFFFFF"),
-		PlaceholderColor = Color3.fromHex("8B8B8B"),
-	},
-	BorderedContainer = {
-		BorderColor = Color3.fromHex("535353"),
-		BackgroundColor = Color3.fromHex("2B2B2B"),
-	},
-	Spinner = {
-		ForegroundColor = BRAND_COLOR,
-		BackgroundColor = Color3.fromHex("2B2B2B"),
-	},
-	Diff = {
-		Add = Color3.fromHex("273732"),
-		Remove = Color3.fromHex("3F2D32"),
-		Edit = Color3.fromHex("193345"),
-		Row = Color3.fromHex("FFFFFF"),
-		Warning = Color3.fromHex("FF8E3C"),
-	},
-	ConnectionDetails = {
-		ProjectNameColor = Color3.fromHex("FFFFFF"),
-		AddressColor = Color3.fromHex("FFFFFF"),
-		DisconnectColor = Color3.fromHex("FFFFFF"),
-	},
-	Settings = {
-		DividerColor = Color3.fromHex("535353"),
-		Navbar = {
-			BackButtonColor = Color3.fromHex("FFFFFF"),
-			TextColor = Color3.fromHex("FFFFFF"),
-		},
-		Setting = {
-			NameColor = Color3.fromHex("FFFFFF"),
-			DescriptionColor = Color3.fromHex("D3D3D3"),
-		},
-	},
-	Header = {
-		LogoColor = BRAND_COLOR,
-		VersionColor = Color3.fromHex("D3D3D3"),
-	},
-	Notification = {
-		InfoColor = Color3.fromHex("FFFFFF"),
-		CloseColor = Color3.fromHex("FFFFFF"),
-	},
-	ErrorColor = Color3.fromHex("FFFFFF"),
-	ScrollBarColor = Color3.fromHex("FFFFFF"),
-})
-
-local Context = Roact.createContext(lightTheme)
+local Context = Roact.createContext({})
 
 local StudioProvider = Roact.Component:extend("StudioProvider")
 
@@ -253,25 +33,192 @@ local StudioProvider = Roact.Component:extend("StudioProvider")
 function StudioProvider:updateTheme()
 	local studioTheme = getStudio().Theme
 
-	if studioTheme.Name == "Light" then
-		self:setState({
-			theme = lightTheme,
-		})
-	elseif studioTheme.Name == "Dark" then
-		self:setState({
-			theme = darkTheme,
-		})
-	else
-		Log.warn("Unexpected theme '{}'' -- falling back to light theme!", studioTheme.Name)
+	local isDark = studioTheme.Name == "Dark"
 
-		self:setState({
-			theme = lightTheme,
-		})
-	end
+	local theme = strict(studioTheme.Name .. "Theme", {
+		Font = {
+			Main = Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Medium, Enum.FontStyle.Normal),
+			Bold = Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
+			Thin = Font.new(
+				"rbxasset://fonts/families/Montserrat.json",
+				Enum.FontWeight.Regular,
+				Enum.FontStyle.Normal
+			),
+			Code = Font.new(
+				"rbxasset://fonts/families/Inconsolata.json",
+				Enum.FontWeight.Regular,
+				Enum.FontStyle.Normal
+			),
+		},
+		TextSize = {
+			Body = 15,
+			Small = 13,
+			Medium = 16,
+			Large = 18,
+			Code = 16,
+		},
+		BrandColor = BRAND_COLOR,
+		BackgroundColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.MainBackground),
+		TextColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.MainText),
+		SubTextColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.SubText),
+		Button = {
+			Solid = {
+				-- Solid uses brand theming, not Studio theming.
+				ActionFillColor = Color3.fromHex("FFFFFF"),
+				ActionFillTransparency = 0.8,
+				Enabled = {
+					TextColor = Color3.fromHex("FFFFFF"),
+					BackgroundColor = BRAND_COLOR,
+				},
+				Disabled = {
+					TextColor = Color3.fromHex("FFFFFF"),
+					BackgroundColor = BRAND_COLOR,
+				},
+			},
+			Bordered = {
+				ActionFillColor = studioTheme:GetColor(
+					Enum.StudioStyleGuideColor.ButtonText,
+					Enum.StudioStyleGuideModifier.Selected
+				),
+				ActionFillTransparency = 0.9,
+				Enabled = {
+					TextColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.ButtonText),
+					BorderColor = studioTheme:GetColor(
+						Enum.StudioStyleGuideColor.CheckedFieldBorder,
+						Enum.StudioStyleGuideModifier.Disabled
+					),
+				},
+				Disabled = {
+					TextColor = studioTheme:GetColor(
+						Enum.StudioStyleGuideColor.ButtonText,
+						Enum.StudioStyleGuideModifier.Disabled
+					),
+					BorderColor = studioTheme:GetColor(
+						Enum.StudioStyleGuideColor.CheckedFieldBorder,
+						Enum.StudioStyleGuideModifier.Disabled
+					),
+				},
+			},
+		},
+		Checkbox = {
+			Active = {
+				-- Active checkboxes use brand theming, not Studio theming.
+				IconColor = Color3.fromHex("FFFFFF"),
+				BackgroundColor = BRAND_COLOR,
+			},
+			Inactive = {
+				IconColor = studioTheme:GetColor(
+					Enum.StudioStyleGuideColor.CheckedFieldIndicator,
+					Enum.StudioStyleGuideModifier.Disabled
+				),
+				BorderColor = studioTheme:GetColor(
+					Enum.StudioStyleGuideColor.CheckedFieldBorder,
+					Enum.StudioStyleGuideModifier.Disabled
+				),
+			},
+		},
+		Dropdown = {
+			TextColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.ButtonText),
+			BorderColor = studioTheme:GetColor(
+				Enum.StudioStyleGuideColor.CheckedFieldBorder,
+				Enum.StudioStyleGuideModifier.Disabled
+			),
+			BackgroundColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.MainBackground),
+			IconColor = studioTheme:GetColor(
+				Enum.StudioStyleGuideColor.CheckedFieldIndicator,
+				Enum.StudioStyleGuideModifier.Disabled
+			),
+		},
+		TextInput = {
+			Enabled = {
+				TextColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+				PlaceholderColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.SubText),
+				BorderColor = studioTheme:GetColor(
+					Enum.StudioStyleGuideColor.CheckedFieldBorder,
+					Enum.StudioStyleGuideModifier.Disabled
+				),
+			},
+			Disabled = {
+				TextColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.MainText),
+				PlaceholderColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.SubText),
+				BorderColor = studioTheme:GetColor(
+					Enum.StudioStyleGuideColor.CheckedFieldBorder,
+					Enum.StudioStyleGuideModifier.Disabled
+				),
+			},
+			ActionFillColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+			ActionFillTransparency = 0.9,
+		},
+		AddressEntry = {
+			TextColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+			PlaceholderColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.SubText),
+		},
+		BorderedContainer = {
+			BorderColor = studioTheme:GetColor(
+				Enum.StudioStyleGuideColor.CheckedFieldBorder,
+				Enum.StudioStyleGuideModifier.Disabled
+			),
+			BackgroundColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.InputFieldBackground),
+		},
+		Spinner = {
+			ForegroundColor = BRAND_COLOR,
+			BackgroundColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.InputFieldBackground),
+		},
+		Diff = {
+			-- Studio doesn't have good colors since their diffs use backgrounds, not text
+			Add = if isDark then Color3.fromRGB(143, 227, 154) else Color3.fromRGB(41, 164, 45),
+			Remove = if isDark then Color3.fromRGB(242, 125, 125) else Color3.fromRGB(150, 29, 29),
+			Edit = if isDark then Color3.fromRGB(120, 154, 248) else Color3.fromRGB(0, 70, 160),
+			Row = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+			Warning = studioTheme:GetColor(Enum.StudioStyleGuideColor.WarningText),
+		},
+		ConnectionDetails = {
+			ProjectNameColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+			AddressColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+			DisconnectColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+		},
+		Settings = {
+			DividerColor = studioTheme:GetColor(
+				Enum.StudioStyleGuideColor.CheckedFieldBorder,
+				Enum.StudioStyleGuideModifier.Disabled
+			),
+			Navbar = {
+				BackButtonColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+				TextColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+			},
+			Setting = {
+				NameColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+				DescriptionColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.MainText),
+				UnstableColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.WarningText),
+				DebugColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.InfoText),
+			},
+		},
+		Header = {
+			LogoColor = BRAND_COLOR,
+			VersionColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.MainText),
+		},
+		Notification = {
+			InfoColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+			CloseColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+		},
+		ErrorColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+		ScrollBarColor = studioTheme:GetColor(Enum.StudioStyleGuideColor.BrightText),
+	})
+
+	self:setState({
+		theme = theme,
+	})
 end
 
 function StudioProvider:init()
 	self:updateTheme()
+
+	-- Preload the Fonts so that getTextBoundsAsync won't yield
+	local fontAssetIds = {}
+	for _, font in self.state.theme.Font do
+		table.insert(fontAssetIds, font.Family)
+	end
+	pcall(ContentProvider.PreloadAsync, ContentProvider, fontAssetIds)
 end
 
 function StudioProvider:render()

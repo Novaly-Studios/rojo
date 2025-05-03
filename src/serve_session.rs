@@ -3,13 +3,12 @@ use std::{
     collections::HashSet,
     io,
     net::IpAddr,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{Arc, Mutex, MutexGuard},
     time::Instant,
 };
 
 use crossbeam_channel::Sender;
-use memofs::IoResultExt;
 use memofs::Vfs;
 use thiserror::Error;
 
@@ -110,14 +109,7 @@ impl ServeSession {
 
         log::debug!("Loading project file from {}", project_path.display());
 
-        let root_project = match vfs.read(&project_path).with_not_found()? {
-            Some(contents) => Project::load_from_slice(&contents, &project_path)?,
-            None => {
-                return Err(ServeSessionError::NoProjectFound {
-                    path: project_path.to_path_buf(),
-                });
-            }
-        };
+        let root_project = Project::load_exact(&vfs, &project_path, None)?;
 
         let mut tree = RojoTree::new(InstanceSnapshot::new());
 
@@ -190,7 +182,10 @@ impl ServeSession {
     }
 
     pub fn project_name(&self) -> &str {
-        &self.root_project.name
+        self.root_project
+            .name
+            .as_ref()
+            .expect("all top-level projects must have their name set")
     }
 
     pub fn project_port(&self) -> Option<u16> {
@@ -213,6 +208,10 @@ impl ServeSession {
         self.root_project.serve_place_ids.as_ref()
     }
 
+    pub fn blocked_place_ids(&self) -> Option<&HashSet<u64>> {
+        self.root_project.blocked_place_ids.as_ref()
+    }
+
     pub fn serve_address(&self) -> Option<IpAddr> {
         self.root_project.serve_address
     }
@@ -224,13 +223,6 @@ impl ServeSession {
 
 #[derive(Debug, Error)]
 pub enum ServeSessionError {
-    #[error(
-        "Rojo requires a project file, but no project file was found in path {}\n\
-        See https://rojo.space/docs/ for guides and documentation.",
-        .path.display()
-    )]
-    NoProjectFound { path: PathBuf },
-
     #[error(transparent)]
     Io {
         #[from]

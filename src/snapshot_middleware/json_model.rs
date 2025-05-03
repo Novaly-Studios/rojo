@@ -2,23 +2,24 @@ use std::{borrow::Cow, collections::HashMap, path::Path, str};
 
 use anyhow::Context;
 use memofs::Vfs;
-use rbx_dom_weak::types::{Attributes, Ref};
+use rbx_dom_weak::{
+    types::{Attributes, Ref},
+    HashMapExt as _, Ustr, UstrMap,
+};
 use serde::Deserialize;
 
 use crate::{
     resolution::UnresolvedValue,
     snapshot::{InstanceContext, InstanceSnapshot},
+    RojoRef,
 };
-
-use super::util::PathExt;
 
 pub fn snapshot_json_model(
     context: &InstanceContext,
     vfs: &Vfs,
     path: &Path,
+    name: &str,
 ) -> anyhow::Result<Option<InstanceSnapshot>> {
-    let name = path.file_name_trim_end(".model.json")?;
-
     let contents = vfs.read(path)?;
     let contents_str = str::from_utf8(&contents)
         .with_context(|| format!("File was not valid UTF-8: {}", path.display()))?;
@@ -44,6 +45,8 @@ pub fn snapshot_json_model(
 
     instance.name = Some(name.to_owned());
 
+    let id = instance.id.take().map(RojoRef::new);
+
     let mut snapshot = instance
         .into_snapshot()
         .with_context(|| format!("Could not load JSON model: {}", path.display()))?;
@@ -52,7 +55,8 @@ pub fn snapshot_json_model(
         .metadata
         .instigating_source(path)
         .relevant_paths(vec![path.to_path_buf()])
-        .context(context);
+        .context(context)
+        .specified_id(id);
 
     Ok(Some(snapshot))
 }
@@ -60,11 +64,17 @@ pub fn snapshot_json_model(
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct JsonModel {
+    #[serde(rename = "$schema", skip_serializing_if = "Option::is_none")]
+    schema: Option<String>,
+
     #[serde(alias = "Name")]
     name: Option<String>,
 
     #[serde(alias = "ClassName")]
-    class_name: String,
+    class_name: Ustr,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
 
     #[serde(
         alias = "Children",
@@ -75,10 +85,10 @@ struct JsonModel {
 
     #[serde(
         alias = "Properties",
-        default = "HashMap::new",
+        default = "UstrMap::new",
         skip_serializing_if = "HashMap::is_empty"
     )]
-    properties: HashMap<String, UnresolvedValue>,
+    properties: UstrMap<UnresolvedValue>,
 
     #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
     attributes: HashMap<String, UnresolvedValue>,
@@ -86,7 +96,7 @@ struct JsonModel {
 
 impl JsonModel {
     fn into_snapshot(self) -> anyhow::Result<InstanceSnapshot> {
-        let name = self.name.unwrap_or_else(|| self.class_name.clone());
+        let name = self.name.unwrap_or_else(|| self.class_name.to_owned());
         let class_name = self.class_name;
 
         let mut children = Vec::with_capacity(self.children.len());
@@ -94,7 +104,7 @@ impl JsonModel {
             children.push(child.into_snapshot()?);
         }
 
-        let mut properties = HashMap::with_capacity(self.properties.len());
+        let mut properties = UstrMap::with_capacity(self.properties.len());
         for (key, unresolved) in self.properties {
             let value = unresolved.resolve(&class_name, &key)?;
             properties.insert(key, value);
@@ -115,7 +125,7 @@ impl JsonModel {
             snapshot_id: Ref::none(),
             metadata: Default::default(),
             name: Cow::Owned(name),
-            class_name: Cow::Owned(class_name),
+            class_name,
             properties,
             children,
         })
@@ -158,6 +168,7 @@ mod test {
             &InstanceContext::default(),
             &vfs,
             Path::new("/foo.model.json"),
+            "foo",
         )
         .unwrap()
         .unwrap();
@@ -195,6 +206,7 @@ mod test {
             &InstanceContext::default(),
             &vfs,
             Path::new("/foo.model.json"),
+            "foo",
         )
         .unwrap()
         .unwrap();

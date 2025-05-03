@@ -16,19 +16,35 @@ local invariant = require(script.Parent.Parent.invariant)
 
 local decodeValue = require(script.Parent.decodeValue)
 local reify = require(script.Parent.reify)
+local reifyInstance, applyDeferredRefs = reify.reifyInstance, reify.applyDeferredRefs
 local setProperty = require(script.Parent.setProperty)
 
 local function applyPatch(instanceMap, patch)
 	local patchTimestamp = DateTime.now():FormatLocalTime("LTS", "en-us")
+	local historyRecording = ChangeHistoryService:TryBeginRecording("Rojo: Patch " .. patchTimestamp)
+	if not historyRecording then
+		-- There can only be one recording at a time
+		Log.debug("Failed to begin history recording for " .. patchTimestamp .. ". Another recording is in progress.")
+	end
 
 	-- Tracks any portions of the patch that could not be applied to the DOM.
 	local unappliedPatch = PatchSet.newEmpty()
 
+	-- Contains a list of all of the ref properties that we'll need to assign.
+	-- It is imperative that refs are assigned after all instances are created
+	-- to ensure that referents can be mapped to instances correctly.
+	local deferredRefs = {}
+
 	for _, removedIdOrInstance in ipairs(patch.removed) do
-		if Types.RbxId(removedIdOrInstance) then
-			instanceMap:destroyId(removedIdOrInstance)
-		else
-			instanceMap:destroyInstance(removedIdOrInstance)
+		local removeInstanceSuccess = pcall(function()
+			if Types.RbxId(removedIdOrInstance) then
+				instanceMap:destroyId(removedIdOrInstance)
+			else
+				instanceMap:destroyInstance(removedIdOrInstance)
+			end
+		end)
+		if not removeInstanceSuccess then
+			table.insert(unappliedPatch.removed, removedIdOrInstance)
 		end
 	end
 
@@ -57,6 +73,9 @@ local function applyPatch(instanceMap, patch)
 		if parentInstance == nil then
 			-- This would be peculiar. If you create an instance with no
 			-- parent, were you supposed to create it at all?
+			if historyRecording then
+				ChangeHistoryService:FinishRecording(historyRecording, Enum.FinishRecordingOperation.Commit)
+			end
 			invariant(
 				"Cannot add an instance from a patch that has no parent.\nInstance {} with parent {}.\nState: {:#?}",
 				id,
@@ -65,7 +84,7 @@ local function applyPatch(instanceMap, patch)
 			)
 		end
 
-		local failedToReify = reify(instanceMap, patch.added, id, parentInstance)
+		local failedToReify = reifyInstance(deferredRefs, instanceMap, patch.added, id, parentInstance)
 
 		if not PatchSet.isEmpty(failedToReify) then
 			Log.debug("Failed to reify as part of applying a patch: {:#?}", failedToReify)
@@ -130,7 +149,7 @@ local function applyPatch(instanceMap, patch)
 				[update.id] = mockVirtualInstance,
 			}
 
-			local failedToReify = reify(instanceMap, mockAdded, update.id, instance.Parent)
+			local failedToReify = reifyInstance(deferredRefs, instanceMap, mockAdded, update.id, instance.Parent)
 
 			local newInstance = instanceMap.fromIds[update.id]
 
@@ -159,10 +178,14 @@ local function applyPatch(instanceMap, patch)
 			end
 
 			-- See you later, original instance.
-			--
+
+			-- Because the user might want to Undo this change, we cannot use Destroy
+			-- since that locks that parent and prevents ChangeHistoryService from
+			-- ever bringing it back. Instead, we parent to nil.
+
 			-- TODO: Can this fail? Some kinds of instance may not appreciate
-			-- being destroyed, like services.
-			instance:Destroy()
+			-- being reparented, like services.
+			instance.Parent = nil
 
 			-- This completes your rebuilding a plane mid-flight safety
 			-- instruction. Please sit back, relax, and enjoy your flight.
@@ -170,7 +193,13 @@ local function applyPatch(instanceMap, patch)
 		end
 
 		if update.changedName ~= nil then
-			instance.Name = update.changedName
+			local setNameSuccess = pcall(function()
+				instance.Name = update.changedName
+			end)
+			if not setNameSuccess then
+				unappliedUpdate.changedName = update.changedName
+				partiallyApplied = true
+			end
 		end
 
 		if update.changedMetadata ~= nil then
@@ -183,15 +212,27 @@ local function applyPatch(instanceMap, patch)
 
 		if update.changedProperties ~= nil then
 			for propertyName, propertyValue in pairs(update.changedProperties) do
-				local ok, decodedValue = decodeValue(propertyValue, instanceMap)
-				if not ok then
+				-- Because refs may refer to instances that we haven't constructed yet,
+				-- we defer applying any ref properties until all instances are created.
+				if next(propertyValue) == "Ref" then
+					table.insert(deferredRefs, {
+						id = update.id,
+						instance = instance,
+						propertyName = propertyName,
+						virtualValue = propertyValue,
+					})
+					continue
+				end
+
+				local decodeSuccess, decodedValue = decodeValue(propertyValue, instanceMap)
+				if not decodeSuccess then
 					unappliedUpdate.changedProperties[propertyName] = propertyValue
 					partiallyApplied = true
 					continue
 				end
 
-				local ok = setProperty(instance, propertyName, decodedValue)
-				if not ok then
+				local setPropertySuccess = setProperty(instance, propertyName, decodedValue)
+				if not setPropertySuccess then
 					unappliedUpdate.changedProperties[propertyName] = propertyValue
 					partiallyApplied = true
 				end
@@ -203,7 +244,11 @@ local function applyPatch(instanceMap, patch)
 		end
 	end
 
-	ChangeHistoryService:SetWaypoint("Rojo: Patch " .. patchTimestamp)
+	if historyRecording then
+		ChangeHistoryService:FinishRecording(historyRecording, Enum.FinishRecordingOperation.Commit)
+	end
+
+	applyDeferredRefs(instanceMap, deferredRefs, unappliedPatch)
 
 	return unappliedPatch
 end
